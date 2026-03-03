@@ -1,0 +1,1247 @@
+<!doctype html>
+<html lang="es">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Music Stats</title>
+        <link rel="icon" type="image/png" href="/favicon.png" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@300;400;600&display=swap"
+            rel="stylesheet"
+        />
+        <style>
+            *,
+            *::before,
+            *::after {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+            }
+
+            :root {
+                --bg: #0c0c0e;
+                --bg2: #131316;
+                --bg3: #1a1a1f;
+                --gold: #c8a84b;
+                --gold-dim: #7a6125;
+                --text: #e4ddd0;
+                --text-dim: #7a7570;
+                --border: #2a2a30;
+                --red: #c05050;
+                --teal: #4a9e8e;
+                --purple: #8a6eaf;
+                --font-serif: "Playfair Display", Georgia, serif;
+                --font-mono: "JetBrains Mono", "Courier New", monospace;
+            }
+
+            html {
+                scroll-behavior: smooth;
+            }
+
+            body {
+                background: var(--bg);
+                color: var(--text);
+                font-family: var(--font-mono);
+                font-size: 13px;
+                font-weight: 300;
+                min-height: 100vh;
+                /* subtle grain */
+                background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+            }
+
+            /* ── HEADER ── */
+            header {
+                border-bottom: 1px solid var(--border);
+                padding: 28px 48px;
+                display: flex;
+                align-items: baseline;
+                gap: 20px;
+                background: linear-gradient(
+                    180deg,
+                    #161619 0%,
+                    transparent 100%
+                );
+            }
+            header h1 {
+                font-family: var(--font-serif);
+                font-size: 2rem;
+                font-weight: 400;
+                letter-spacing: -0.02em;
+                color: var(--text);
+            }
+            header h1 em {
+                color: var(--gold);
+                font-style: italic;
+            }
+            .header-meta {
+                color: var(--text-dim);
+                font-size: 11px;
+                letter-spacing: 0.1em;
+                text-transform: uppercase;
+            }
+            .dot {
+                display: inline-block;
+                width: 6px;
+                height: 6px;
+                border-radius: 50%;
+                background: var(--gold);
+                margin-right: 8px;
+                vertical-align: middle;
+            }
+
+            /* ── LAYOUT ── */
+            main {
+                padding: 40px 48px;
+                max-width: 1600px;
+            }
+
+            /* ── FILTERS ── */
+            .filters {
+                display: flex;
+                gap: 12px;
+                margin-bottom: 40px;
+                flex-wrap: wrap;
+                align-items: center;
+            }
+            .filter-label {
+                color: var(--text-dim);
+                font-size: 11px;
+                letter-spacing: 0.1em;
+                text-transform: uppercase;
+                margin-right: 4px;
+            }
+            select,
+            button.filter-btn {
+                background: var(--bg3);
+                border: 1px solid var(--border);
+                color: var(--text);
+                font-family: var(--font-mono);
+                font-size: 12px;
+                padding: 8px 14px;
+                border-radius: 2px;
+                cursor: pointer;
+                outline: none;
+                transition:
+                    border-color 0.2s,
+                    color 0.2s;
+            }
+            select:hover,
+            button.filter-btn:hover {
+                border-color: var(--gold-dim);
+            }
+            select:focus {
+                border-color: var(--gold);
+            }
+            button.filter-btn.active {
+                border-color: var(--gold);
+                color: var(--gold);
+            }
+            button.reset-btn {
+                background: transparent;
+                border: 1px solid var(--border);
+                color: var(--text-dim);
+                font-family: var(--font-mono);
+                font-size: 11px;
+                padding: 8px 14px;
+                border-radius: 2px;
+                cursor: pointer;
+                transition: color 0.2s;
+            }
+            button.reset-btn:hover {
+                color: var(--text);
+                border-color: var(--text-dim);
+            }
+
+            /* ── KPI CARDS ── */
+            .kpi-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                gap: 1px;
+                border: 1px solid var(--border);
+                margin-bottom: 40px;
+            }
+            .kpi-card {
+                background: var(--bg2);
+                padding: 24px 20px;
+                border-right: 1px solid var(--border);
+            }
+            .kpi-card:last-child {
+                border-right: none;
+            }
+            .kpi-value {
+                font-family: var(--font-serif);
+                font-size: 2.4rem;
+                font-weight: 700;
+                color: var(--gold);
+                line-height: 1;
+                margin-bottom: 8px;
+            }
+            .kpi-label {
+                font-size: 10px;
+                letter-spacing: 0.12em;
+                text-transform: uppercase;
+                color: var(--text-dim);
+            }
+            .kpi-sub {
+                font-size: 11px;
+                color: var(--text-dim);
+                margin-top: 4px;
+            }
+
+            /* ── SECTIONS ── */
+            .section-title {
+                font-family: var(--font-serif);
+                font-size: 1.2rem;
+                font-weight: 400;
+                color: var(--text);
+                margin-bottom: 20px;
+                padding-bottom: 10px;
+                border-bottom: 1px solid var(--border);
+                display: flex;
+                align-items: center;
+                gap: 12px;
+            }
+            .section-title span.tag {
+                font-family: var(--font-mono);
+                font-size: 10px;
+                color: var(--gold);
+                letter-spacing: 0.1em;
+                text-transform: uppercase;
+                background: #1e1a0e;
+                border: 1px solid var(--gold-dim);
+                padding: 2px 8px;
+                border-radius: 2px;
+            }
+
+            /* ── CHARTS GRID ── */
+            .charts-grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 24px;
+                margin-bottom: 40px;
+            }
+            .chart-card {
+                background: var(--bg2);
+                border: 1px solid var(--border);
+                padding: 28px 24px;
+            }
+            .chart-card.full {
+                grid-column: 1 / -1;
+            }
+
+            /* ── PIPELINE ── */
+            .pipeline-legend {
+                display: flex;
+                gap: 24px;
+                margin-bottom: 20px;
+                flex-wrap: wrap;
+            }
+            .legend-item {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                font-size: 11px;
+                color: var(--text-dim);
+            }
+            .legend-dot {
+                width: 10px;
+                height: 10px;
+                border-radius: 50%;
+                flex-shrink: 0;
+            }
+
+            /* ── TABLE ── */
+            .table-wrap {
+                background: var(--bg2);
+                border: 1px solid var(--border);
+                overflow: auto;
+                margin-bottom: 40px;
+            }
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 12px;
+            }
+            thead th {
+                background: var(--bg3);
+                color: var(--text-dim);
+                font-size: 10px;
+                letter-spacing: 0.1em;
+                text-transform: uppercase;
+                padding: 12px 16px;
+                text-align: left;
+                border-bottom: 1px solid var(--border);
+                white-space: nowrap;
+                cursor: pointer;
+                user-select: none;
+            }
+            thead th:hover {
+                color: var(--gold);
+            }
+            thead th.sorted {
+                color: var(--gold);
+            }
+            tbody tr {
+                border-bottom: 1px solid #1e1e24;
+                transition: background 0.1s;
+            }
+            tbody tr:hover {
+                background: var(--bg3);
+            }
+            tbody td {
+                padding: 11px 16px;
+                color: var(--text);
+            }
+            .td-artist {
+                font-weight: 400;
+            }
+            .td-album {
+                color: var(--text-dim);
+                font-style: italic;
+            }
+            .td-genre {
+                color: var(--text-dim);
+            }
+            .td-date {
+                color: var(--text-dim);
+                font-size: 11px;
+            }
+            .td-days {
+                text-align: center;
+            }
+            .badge {
+                display: inline-block;
+                padding: 2px 8px;
+                border-radius: 2px;
+                font-size: 11px;
+                font-weight: 400;
+            }
+            .badge-ok {
+                background: #122a20;
+                color: #4caf50;
+                border: 1px solid #1f4a30;
+            }
+            .badge-warn {
+                background: #2a1a00;
+                color: #ff9800;
+                border: 1px solid #4a3000;
+            }
+            .badge-na {
+                background: var(--bg3);
+                color: var(--text-dim);
+                border: 1px solid var(--border);
+            }
+
+            /* ── LOADING / ERROR ── */
+            .center-msg {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                min-height: 60vh;
+                gap: 16px;
+                color: var(--text-dim);
+            }
+            .center-msg h2 {
+                font-family: var(--font-serif);
+                color: var(--text);
+                font-size: 1.4rem;
+            }
+            .center-msg pre {
+                background: var(--bg2);
+                border: 1px solid var(--border);
+                padding: 16px 24px;
+                font-size: 11px;
+                color: var(--gold);
+                border-radius: 2px;
+                max-width: 500px;
+                text-align: left;
+                line-height: 1.8;
+            }
+            .spinner {
+                width: 32px;
+                height: 32px;
+                border: 2px solid var(--border);
+                border-top-color: var(--gold);
+                border-radius: 50%;
+                animation: spin 0.8s linear infinite;
+            }
+            @keyframes spin {
+                to {
+                    transform: rotate(360deg);
+                }
+            }
+
+            /* tooltip override */
+            .recharts-tooltip-wrapper {
+                outline: none;
+            }
+            .custom-tooltip {
+                background: #1c1c22;
+                border: 1px solid var(--border);
+                padding: 10px 14px;
+                font-family: var(--font-mono);
+                font-size: 11px;
+            }
+            .custom-tooltip .ct-label {
+                color: var(--gold);
+                margin-bottom: 4px;
+                font-weight: 600;
+            }
+            .custom-tooltip .ct-row {
+                color: var(--text-dim);
+            }
+
+            @media (max-width: 900px) {
+                header,
+                main {
+                    padding: 20px;
+                }
+                .charts-grid {
+                    grid-template-columns: 1fr;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div id="root"></div>
+
+        <script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+        <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+        <script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
+        <script src="https://unpkg.com/recharts@2.8.0/umd/Recharts.js"></script>
+
+        <script>
+            const { useState, useEffect, useMemo } = React;
+            const {
+                BarChart,
+                Bar,
+                XAxis,
+                YAxis,
+                CartesianGrid,
+                Tooltip,
+                Legend,
+                ResponsiveContainer,
+                ScatterChart,
+                Scatter,
+                ZAxis,
+                Cell,
+                LineChart,
+                Line,
+                ReferenceLine,
+            } = Recharts;
+
+            // ── COLORS ──────────────────────────────────
+            const C = {
+                gold: "#c8a84b",
+                teal: "#4a9e8e",
+                purple: "#8a6eaf",
+                red: "#c05050",
+                blue: "#4a70af",
+                dim: "#7a7570",
+                bg3: "#1a1a1f",
+                border: "#2a2a30",
+                text: "#e4ddd0",
+            };
+            const STAGE_COLORS = [C.teal, C.gold, C.purple];
+            const GENRE_PALETTE = [
+                "#c8a84b",
+                "#4a9e8e",
+                "#8a6eaf",
+                "#c05050",
+                "#4a70af",
+                "#9e7a4a",
+                "#4a9e6e",
+                "#af6e8a",
+                "#7a9e4a",
+            ];
+
+            // ── HELPERS ─────────────────────────────────
+            const avg = (arr) =>
+                arr.length
+                    ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length)
+                    : null;
+            const fmtD = (v) => (v == null ? "—" : `${v}d`);
+            const daysBadge = (v) => {
+                if (v == null)
+                    return React.createElement(
+                        "span",
+                        { className: "badge badge-na" },
+                        "—",
+                    );
+                const cls = v <= 14 ? "badge-ok" : "badge-warn";
+                return React.createElement(
+                    "span",
+                    { className: `badge ${cls}` },
+                    `${v}d`,
+                );
+            };
+            const fmtDate = (d) => (d ? d.slice(0, 10) : "—");
+
+            // ── CUSTOM TOOLTIP ───────────────────────────
+            function CT({ active, payload, label }) {
+                if (!active || !payload?.length) return null;
+                return React.createElement(
+                    "div",
+                    { className: "custom-tooltip" },
+                    React.createElement(
+                        "div",
+                        { className: "ct-label" },
+                        label,
+                    ),
+                    ...payload.map((p, i) =>
+                        React.createElement(
+                            "div",
+                            { className: "ct-row", key: i },
+                            `${p.name}: ${p.value != null ? p.value + "d" : "—"}`,
+                        ),
+                    ),
+                );
+            }
+
+            // ── MAIN APP ─────────────────────────────────
+            function App() {
+                const [data, setData] = useState(null);
+                const [error, setError] = useState(null);
+                const [artist, setArtist] = useState("");
+                const [genre, setGenre] = useState("");
+                const [sortKey, setSortKey] = useState("release_date");
+                const [sortAsc, setSortAsc] = useState(false);
+
+                useEffect(() => {
+                    fetch("data.json")
+                        .then((r) => {
+                            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                            return r.json();
+                        })
+                        .then((d) => setData(d.albums || []))
+                        .catch((e) => setError(e.message));
+                }, []);
+
+                const artists = useMemo(
+                    () =>
+                        data
+                            ? [...new Set(data.map((a) => a.artist))].sort()
+                            : [],
+                    [data],
+                );
+                const genres = useMemo(
+                    () =>
+                        data
+                            ? [
+                                  ...new Set(
+                                      data.map((a) => a.genre).filter(Boolean),
+                                  ),
+                              ].sort()
+                            : [],
+                    [data],
+                );
+
+                const filtered = useMemo(() => {
+                    if (!data) return [];
+                    return data.filter(
+                        (a) =>
+                            (!artist || a.artist === artist) &&
+                            (!genre || a.genre === genre),
+                    );
+                }, [data, artist, genre]);
+
+                const sorted = useMemo(() => {
+                    return [...filtered].sort((a, b) => {
+                        const va = a[sortKey] ?? "";
+                        const vb = b[sortKey] ?? "";
+                        return sortAsc ? (va > vb ? 1 : -1) : va < vb ? 1 : -1;
+                    });
+                }, [filtered, sortKey, sortAsc]);
+
+                // KPIs
+                const kpi = useMemo(() => {
+                    const d1 = filtered
+                        .map((a) => a.days_release_to_store)
+                        .filter((v) => v != null);
+                    const d2 = filtered
+                        .map((a) => a.days_store_to_purchase)
+                        .filter((v) => v != null);
+                    const d3 = filtered
+                        .map((a) => a.days_purchase_to_listened)
+                        .filter((v) => v != null);
+                    return {
+                        total: filtered.length,
+                        listened: filtered.filter((a) => a.listened_date)
+                            .length,
+                        avgRS: avg(d1),
+                        avgSP: avg(d2),
+                        avgPL: avg(d3),
+                    };
+                }, [filtered]);
+
+                // Chart: avg days per artist
+                const byArtist = useMemo(() => {
+                    const map = {};
+                    filtered.forEach((a) => {
+                        if (!map[a.artist])
+                            map[a.artist] = {
+                                name: a.artist,
+                                rs: [],
+                                sp: [],
+                                pl: [],
+                            };
+                        if (a.days_release_to_store != null)
+                            map[a.artist].rs.push(a.days_release_to_store);
+                        if (a.days_store_to_purchase != null)
+                            map[a.artist].sp.push(a.days_store_to_purchase);
+                        if (a.days_purchase_to_listened != null)
+                            map[a.artist].pl.push(a.days_purchase_to_listened);
+                    });
+                    return Object.values(map)
+                        .map((v) => ({
+                            name:
+                                v.name.length > 18
+                                    ? v.name.slice(0, 18) + "…"
+                                    : v.name,
+                            "Lanz→Tienda": avg(v.rs),
+                            "Tienda→Compra": avg(v.sp),
+                            "Compra→Escucha": avg(v.pl),
+                        }))
+                        .filter(
+                            (v) =>
+                                v["Lanz→Tienda"] ||
+                                v["Tienda→Compra"] ||
+                                v["Compra→Escucha"],
+                        );
+                }, [filtered]);
+
+                // Chart: avg days per genre
+                const byGenre = useMemo(() => {
+                    const map = {};
+                    filtered.forEach((a) => {
+                        const g = a.genre || "Sin género";
+                        if (!map[g])
+                            map[g] = { name: g, rs: [], sp: [], pl: [] };
+                        if (a.days_release_to_store != null)
+                            map[g].rs.push(a.days_release_to_store);
+                        if (a.days_store_to_purchase != null)
+                            map[g].sp.push(a.days_store_to_purchase);
+                        if (a.days_purchase_to_listened != null)
+                            map[g].pl.push(a.days_purchase_to_listened);
+                    });
+                    return Object.values(map).map((v) => ({
+                        name: v.name,
+                        "Lanz→Tienda": avg(v.rs),
+                        "Tienda→Compra": avg(v.sp),
+                        "Compra→Escucha": avg(v.pl),
+                    }));
+                }, [filtered]);
+
+                // Scatter: release date vs total pipeline
+                const scatter = useMemo(() => {
+                    return filtered
+                        .filter(
+                            (a) =>
+                                a.release_date &&
+                                a.days_release_to_store != null,
+                        )
+                        .map((a) => ({
+                            x:
+                                new Date(a.release_date).getFullYear() +
+                                new Date(a.release_date).getMonth() / 12,
+                            y:
+                                (a.days_release_to_store || 0) +
+                                (a.days_store_to_purchase || 0) +
+                                (a.days_purchase_to_listened || 0),
+                            name: `${a.artist} — ${a.album}`,
+                        }));
+                }, [filtered]);
+
+                function toggleSort(key) {
+                    if (sortKey === key) setSortAsc((v) => !v);
+                    else {
+                        setSortKey(key);
+                        setSortAsc(true);
+                    }
+                }
+                function thProps(key, label) {
+                    return {
+                        className: "th " + (sortKey === key ? "sorted" : ""),
+                        onClick: () => toggleSort(key),
+                        title: "Ordenar por " + label,
+                        children:
+                            label +
+                            (sortKey === key ? (sortAsc ? " ↑" : " ↓") : ""),
+                    };
+                }
+
+                // ── RENDER STATES ──
+                if (error)
+                    return React.createElement(
+                        "div",
+                        { className: "center-msg" },
+                        React.createElement(
+                            "h2",
+                            null,
+                            "No se pudo cargar data.json",
+                        ),
+                        React.createElement(
+                            "pre",
+                            null,
+                            `Error: ${error}\n\nAsegúrate de que:\n1. Ejecutaste extract.py\n2. data.json está en la misma\n   carpeta que este HTML\n3. Abriste el HTML desde un servidor\n   (no directamente como file://)`,
+                        ),
+                    );
+                if (!data)
+                    return React.createElement(
+                        "div",
+                        { className: "center-msg" },
+                        React.createElement("div", { className: "spinner" }),
+                        React.createElement("span", null, "Cargando…"),
+                    );
+
+                const stageKeys = [
+                    "Lanz→Tienda",
+                    "Tienda→Compra",
+                    "Compra→Escucha",
+                ];
+
+                return React.createElement(
+                    React.Fragment,
+                    null,
+
+                    // HEADER
+                    React.createElement(
+                        "header",
+                        null,
+                        React.createElement(
+                            "h1",
+                            null,
+                            "Music",
+                            React.createElement("em", null, " Stats"),
+                        ),
+                        React.createElement(
+                            "span",
+                            { className: "header-meta" },
+                            React.createElement("span", { className: "dot" }),
+                            `${kpi.total} álbumes · ${kpi.listened} escuchados`,
+                        ),
+                        data.generated_at &&
+                            React.createElement(
+                                "span",
+                                {
+                                    className: "header-meta",
+                                    style: { marginLeft: "auto" },
+                                },
+                                "act. " + fmtDate(data.generated_at),
+                            ),
+                    ),
+
+                    // MAIN
+                    React.createElement(
+                        "main",
+                        null,
+
+                        // FILTERS
+                        React.createElement(
+                            "div",
+                            { className: "filters" },
+                            React.createElement(
+                                "span",
+                                { className: "filter-label" },
+                                "Filtrar:",
+                            ),
+                            React.createElement(
+                                "select",
+                                {
+                                    value: artist,
+                                    onChange: (e) => setArtist(e.target.value),
+                                },
+                                React.createElement(
+                                    "option",
+                                    { value: "" },
+                                    "Todos los artistas",
+                                ),
+                                ...artists.map((a) =>
+                                    React.createElement(
+                                        "option",
+                                        { key: a, value: a },
+                                        a,
+                                    ),
+                                ),
+                            ),
+                            React.createElement(
+                                "select",
+                                {
+                                    value: genre,
+                                    onChange: (e) => setGenre(e.target.value),
+                                },
+                                React.createElement(
+                                    "option",
+                                    { value: "" },
+                                    "Todos los géneros",
+                                ),
+                                ...genres.map((g) =>
+                                    React.createElement(
+                                        "option",
+                                        { key: g, value: g },
+                                        g,
+                                    ),
+                                ),
+                            ),
+                            (artist || genre) &&
+                                React.createElement(
+                                    "button",
+                                    {
+                                        className: "reset-btn",
+                                        onClick: () => {
+                                            setArtist("");
+                                            setGenre("");
+                                        },
+                                    },
+                                    "Limpiar filtros",
+                                ),
+                        ),
+
+                        // KPI CARDS
+                        React.createElement(
+                            "div",
+                            { className: "kpi-grid" },
+                            kpiCard(kpi.total, "Álbumes totales"),
+                            kpiCard(
+                                kpi.listened,
+                                "Escuchados",
+                                `${kpi.total > 0 ? Math.round((kpi.listened / kpi.total) * 100) : 0}% del total`,
+                            ),
+                            kpiCard(
+                                fmtD(kpi.avgRS),
+                                "Prom. Lanz→Tienda",
+                                "días hasta disponibilidad",
+                            ),
+                            kpiCard(
+                                fmtD(kpi.avgSP),
+                                "Prom. Tienda→Compra",
+                                "días hasta compra",
+                            ),
+                            kpiCard(
+                                fmtD(kpi.avgPL),
+                                "Prom. Compra→Escucha",
+                                "días hasta escuchar",
+                            ),
+                        ),
+
+                        // CHARTS ROW 1
+                        React.createElement(
+                            "div",
+                            { className: "charts-grid" },
+
+                            // By Artist
+                            React.createElement(
+                                "div",
+                                { className: "chart-card" },
+                                React.createElement(
+                                    "div",
+                                    { className: "section-title" },
+                                    "Por artista",
+                                    React.createElement(
+                                        "span",
+                                        { className: "tag" },
+                                        "días promedio",
+                                    ),
+                                ),
+                                React.createElement(
+                                    ResponsiveContainer,
+                                    { width: "100%", height: 260 },
+                                    React.createElement(
+                                        BarChart,
+                                        {
+                                            data: byArtist,
+                                            margin: {
+                                                top: 5,
+                                                right: 10,
+                                                bottom: 40,
+                                                left: 0,
+                                            },
+                                        },
+                                        React.createElement(CartesianGrid, {
+                                            strokeDasharray: "3 3",
+                                            stroke: C.border,
+                                        }),
+                                        React.createElement(XAxis, {
+                                            dataKey: "name",
+                                            tick: { fill: C.dim, fontSize: 10 },
+                                            angle: -30,
+                                            textAnchor: "end",
+                                        }),
+                                        React.createElement(YAxis, {
+                                            tick: { fill: C.dim, fontSize: 10 },
+                                            unit: "d",
+                                        }),
+                                        React.createElement(Tooltip, {
+                                            content: React.createElement(CT),
+                                        }),
+                                        React.createElement(Legend, {
+                                            wrapperStyle: {
+                                                fontSize: 11,
+                                                color: C.dim,
+                                                paddingTop: 8,
+                                            },
+                                        }),
+                                        ...stageKeys.map((k, i) =>
+                                            React.createElement(Bar, {
+                                                key: k,
+                                                dataKey: k,
+                                                stackId: "a",
+                                                fill: STAGE_COLORS[i],
+                                                radius:
+                                                    i === stageKeys.length - 1
+                                                        ? [2, 2, 0, 0]
+                                                        : [0, 0, 0, 0],
+                                            }),
+                                        ),
+                                    ),
+                                ),
+                            ),
+
+                            // By Genre
+                            React.createElement(
+                                "div",
+                                { className: "chart-card" },
+                                React.createElement(
+                                    "div",
+                                    { className: "section-title" },
+                                    "Por género",
+                                    React.createElement(
+                                        "span",
+                                        { className: "tag" },
+                                        "días promedio",
+                                    ),
+                                ),
+                                React.createElement(
+                                    ResponsiveContainer,
+                                    { width: "100%", height: 260 },
+                                    React.createElement(
+                                        BarChart,
+                                        {
+                                            data: byGenre,
+                                            margin: {
+                                                top: 5,
+                                                right: 10,
+                                                bottom: 40,
+                                                left: 0,
+                                            },
+                                        },
+                                        React.createElement(CartesianGrid, {
+                                            strokeDasharray: "3 3",
+                                            stroke: C.border,
+                                        }),
+                                        React.createElement(XAxis, {
+                                            dataKey: "name",
+                                            tick: { fill: C.dim, fontSize: 10 },
+                                            angle: -30,
+                                            textAnchor: "end",
+                                        }),
+                                        React.createElement(YAxis, {
+                                            tick: { fill: C.dim, fontSize: 10 },
+                                            unit: "d",
+                                        }),
+                                        React.createElement(Tooltip, {
+                                            content: React.createElement(CT),
+                                        }),
+                                        React.createElement(Legend, {
+                                            wrapperStyle: {
+                                                fontSize: 11,
+                                                color: C.dim,
+                                                paddingTop: 8,
+                                            },
+                                        }),
+                                        ...stageKeys.map((k, i) =>
+                                            React.createElement(Bar, {
+                                                key: k,
+                                                dataKey: k,
+                                                stackId: "a",
+                                                fill: STAGE_COLORS[i],
+                                                radius:
+                                                    i === stageKeys.length - 1
+                                                        ? [2, 2, 0, 0]
+                                                        : [0, 0, 0, 0],
+                                            }),
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ),
+
+                        // SCATTER (pipeline total en el tiempo)
+                        scatter.length > 0 &&
+                            React.createElement(
+                                "div",
+                                {
+                                    className: "chart-card full",
+                                    style: { marginBottom: 24 },
+                                },
+                                React.createElement(
+                                    "div",
+                                    { className: "section-title" },
+                                    "Pipeline total en el tiempo",
+                                    React.createElement(
+                                        "span",
+                                        { className: "tag" },
+                                        "días lanz→escucha",
+                                    ),
+                                ),
+                                React.createElement(
+                                    ResponsiveContainer,
+                                    { width: "100%", height: 220 },
+                                    React.createElement(
+                                        ScatterChart,
+                                        {
+                                            margin: {
+                                                top: 5,
+                                                right: 20,
+                                                bottom: 10,
+                                                left: 0,
+                                            },
+                                        },
+                                        React.createElement(CartesianGrid, {
+                                            strokeDasharray: "3 3",
+                                            stroke: C.border,
+                                        }),
+                                        React.createElement(XAxis, {
+                                            dataKey: "x",
+                                            type: "number",
+                                            domain: ["auto", "auto"],
+                                            tick: { fill: C.dim, fontSize: 10 },
+                                            tickFormatter: (v) => Math.round(v),
+                                        }),
+                                        React.createElement(YAxis, {
+                                            dataKey: "y",
+                                            type: "number",
+                                            unit: "d",
+                                            tick: { fill: C.dim, fontSize: 10 },
+                                        }),
+                                        React.createElement(ZAxis, {
+                                            range: [40, 40],
+                                        }),
+                                        React.createElement(Tooltip, {
+                                            cursor: { stroke: C.border },
+                                            content: ({ active, payload }) => {
+                                                if (!active || !payload?.[0])
+                                                    return null;
+                                                const d = payload[0].payload;
+                                                return React.createElement(
+                                                    "div",
+                                                    {
+                                                        className:
+                                                            "custom-tooltip",
+                                                    },
+                                                    React.createElement(
+                                                        "div",
+                                                        {
+                                                            className:
+                                                                "ct-label",
+                                                        },
+                                                        d.name,
+                                                    ),
+                                                    React.createElement(
+                                                        "div",
+                                                        { className: "ct-row" },
+                                                        `Total: ${d.y}d`,
+                                                    ),
+                                                );
+                                            },
+                                        }),
+                                        React.createElement(Scatter, {
+                                            data: scatter,
+                                            fill: C.gold,
+                                            opacity: 0.7,
+                                        }),
+                                    ),
+                                ),
+                            ),
+
+                        // TABLE
+                        React.createElement(
+                            "div",
+                            {
+                                className: "section-title",
+                                style: { marginBottom: 16 },
+                            },
+                            "Detalle",
+                            React.createElement(
+                                "span",
+                                { className: "tag" },
+                                `${sorted.length} álbumes`,
+                            ),
+                        ),
+                        React.createElement(
+                            "div",
+                            { className: "table-wrap" },
+                            React.createElement(
+                                "table",
+                                null,
+                                React.createElement(
+                                    "thead",
+                                    null,
+                                    React.createElement(
+                                        "tr",
+                                        null,
+                                        React.createElement(
+                                            "th",
+                                            thProps("artist", "Artista"),
+                                        ),
+                                        React.createElement(
+                                            "th",
+                                            thProps("album", "Álbum"),
+                                        ),
+                                        React.createElement(
+                                            "th",
+                                            thProps("genre", "Género"),
+                                        ),
+                                        React.createElement(
+                                            "th",
+                                            thProps(
+                                                "release_date",
+                                                "Lanzamiento",
+                                            ),
+                                        ),
+                                        React.createElement(
+                                            "th",
+                                            thProps("store_date", "Tienda"),
+                                        ),
+                                        React.createElement(
+                                            "th",
+                                            thProps("purchase_date", "Compra"),
+                                        ),
+                                        React.createElement(
+                                            "th",
+                                            thProps(
+                                                "listened_date",
+                                                "Escuchado",
+                                            ),
+                                        ),
+                                        React.createElement(
+                                            "th",
+                                            thProps(
+                                                "days_release_to_store",
+                                                "L→T",
+                                            ),
+                                        ),
+                                        React.createElement(
+                                            "th",
+                                            thProps(
+                                                "days_store_to_purchase",
+                                                "T→C",
+                                            ),
+                                        ),
+                                        React.createElement(
+                                            "th",
+                                            thProps(
+                                                "days_purchase_to_listened",
+                                                "C→E",
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                                React.createElement(
+                                    "tbody",
+                                    null,
+                                    ...sorted.map((a, i) =>
+                                        React.createElement(
+                                            "tr",
+                                            { key: i },
+                                            React.createElement(
+                                                "td",
+                                                { className: "td-artist" },
+                                                a.artist,
+                                            ),
+                                            React.createElement(
+                                                "td",
+                                                { className: "td-album" },
+                                                a.album,
+                                            ),
+                                            React.createElement(
+                                                "td",
+                                                { className: "td-genre" },
+                                                a.genre || "—",
+                                            ),
+                                            React.createElement(
+                                                "td",
+                                                { className: "td-date" },
+                                                fmtDate(a.release_date),
+                                            ),
+                                            React.createElement(
+                                                "td",
+                                                { className: "td-date" },
+                                                fmtDate(a.store_date),
+                                            ),
+                                            React.createElement(
+                                                "td",
+                                                { className: "td-date" },
+                                                fmtDate(a.purchase_date),
+                                            ),
+                                            React.createElement(
+                                                "td",
+                                                { className: "td-date" },
+                                                fmtDate(a.listened_date) +
+                                                    (a.listened_date
+                                                        ? " ✓"
+                                                        : ""),
+                                            ),
+                                            React.createElement(
+                                                "td",
+                                                { className: "td-days" },
+                                                daysBadge(
+                                                    a.days_release_to_store,
+                                                ),
+                                            ),
+                                            React.createElement(
+                                                "td",
+                                                { className: "td-days" },
+                                                daysBadge(
+                                                    a.days_store_to_purchase,
+                                                ),
+                                            ),
+                                            React.createElement(
+                                                "td",
+                                                { className: "td-days" },
+                                                daysBadge(
+                                                    a.days_purchase_to_listened,
+                                                ),
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ), // /main
+                );
+            }
+
+            function kpiCard(value, label, sub) {
+                return React.createElement(
+                    "div",
+                    { className: "kpi-card", key: label },
+                    React.createElement(
+                        "div",
+                        { className: "kpi-value" },
+                        value ?? "—",
+                    ),
+                    React.createElement(
+                        "div",
+                        { className: "kpi-label" },
+                        label,
+                    ),
+                    sub &&
+                        React.createElement(
+                            "div",
+                            { className: "kpi-sub" },
+                            sub,
+                        ),
+                );
+            }
+
+            document.addEventListener("DOMContentLoaded", function () {
+                ReactDOM.createRoot(document.getElementById("root")).render(
+                    React.createElement(App),
+                );
+            });
+        </script>
+    </body>
+</html>

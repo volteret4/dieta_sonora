@@ -1,0 +1,15 @@
+[Unit]
+Description=Servidor Flask de Música Pollete
+After=network.target
+
+[Service]
+Type=simple
+User=pepe
+WorkingDirectory=/home/pepe/Scripts/Musica/orpheus-api
+Environment="PATH=/usr/bin:/usr/local/bin"
+ExecStart=/home/pepe/Scripts/python_venv/bin/python3 /home/pepe/Scripts/Musica/orpheus-api/app.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
