@@ -11,10 +11,10 @@ import sys
 import os
 import unicodedata
 from urllib.parse import urljoin
-from dotenv import load_dotenv
+from sops_env import load_sops_env
 
 # Cargar variables de entorno desde .env
-load_dotenv()
+load_sops_env()
 
 # CONFIGURACIÓN - Ajusta estos valores según tu instalación
 AIRSONIC_URL = os.getenv('AIRSONIC_URL', 'http://localhost:4040')

@@ -4,9 +4,9 @@ import json
 import time
 import os
 from datetime import datetime
-from dotenv import load_dotenv
+from sops_env import load_sops_env
 
-load_dotenv()
+load_sops_env()
 
 API_KEY = os.getenv("ORPHEUS_APIKEY")
 BASE_URL = "https://orpheus.network/ajax.php"

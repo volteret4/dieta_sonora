@@ -51,14 +51,14 @@ import re
 import sqlite3
 import sys
 import time
-import uuid
+
 from datetime import datetime, date, timezone, timedelta
 from typing import Optional
 from xml.etree import ElementTree as ET
 
 import requests
 from dotenv import load_dotenv
-from icalendar import Calendar, Todo, vDatetime, vText
+from icalendar import Calendar, vDatetime, vText
 
 # ── Certifi opcional ──────────────────────────────────────────────────────────
 try:
@@ -405,24 +405,6 @@ def fix_missing_dtstart(tasks: dict, dry_run: bool) -> int:
 #  CREACIÓN Y ACTUALIZACIÓN DE VTODOS
 # ─────────────────────────────────────────────────────────────────────────────
 
-def make_vtodo_ical(artist: str, album: str, release_date: str,
-                    uid: Optional[str] = None) -> tuple[str, str]:
-    if not uid:
-        uid = str(uuid.uuid4())
-    cal = Calendar()
-    cal.add("PRODID", "-//SyncMusic//sync_music.py//ES")
-    cal.add("VERSION", "2.0")
-    todo = Todo()
-    todo.add("UID",     uid)
-    todo.add("SUMMARY", f"{artist} - {album}")
-    todo.add("DTSTART", date.fromisoformat(release_date))
-    todo.add("STATUS",  "NEEDS-ACTION")
-    todo.add("DTSTAMP", datetime.now(tz=timezone.utc))
-    todo.add("CREATED", datetime.now(tz=timezone.utc))
-    cal.add_component(todo)
-    return uid, cal.to_ical().decode("utf-8")
-
-
 def fix_missing_due(tasks: dict, dry_run: bool) -> int:
     """
     Para cada VTODO que tiene DTSTART pero carece de DUE, asigna
@@ -473,13 +455,6 @@ def fix_missing_due(tasks: dict, dry_run: bool) -> int:
             print("     ❌ Error actualizando en Radicale")
 
     return fixed
-
-
-def create_vtodo(artist: str, album: str, release_date: str) -> Optional[str]:
-    """Crea un VTODO en el calendario de tareas. Retorna href o None."""
-    uid, ical_text = make_vtodo_ical(artist, album, release_date)
-    href = f"{RADICALE_BASE.rstrip('/')}/{CALENDAR_TASKS}/{uid}.ics"
-    return href if put_ical(href, ical_text) else None
 
 
 def update_vtodo_completed(task: dict, listened_date: date) -> bool:
@@ -540,6 +515,42 @@ def append_to_csv(path: str, artist: str, album: str, purchase_date: str):
             writer.writerow(["artist", "album", "purchase_date"])
         writer.writerow([artist, album, purchase_date])
     print(f"    📋 CSV: añadido {artist} — {album} ({purchase_date})")
+
+
+def reclassify_csv_manual(csv_path: str,
+                          manual_keys: set[tuple],
+                          dry_run: bool):
+    """
+    Lee albums.csv y, para las entradas cuya clave (artist_norm, album_norm)
+    esté en manual_keys, cambia su type de 'vevent' a 'manual'.
+    No añade ni elimina filas, solo actualiza el campo type.
+    """
+    if not os.path.exists(csv_path):
+        print(f"  ⚠️  {csv_path} no existe")
+        return
+
+    rows = load_csv(csv_path)
+    changed = 0
+    for row in rows:
+        row.setdefault("type", "vevent")
+        if _csv_key(row) in manual_keys and row["type"] != "manual":
+            row["type"] = "manual"
+            changed += 1
+            print(f"  vevent→manual: {row.get('artist')} — {row.get('album')}")
+
+    print(f"\n  Entradas reclasificadas: {changed} | Total en CSV: {len(rows)}")
+
+    if dry_run:
+        print("  [DRY RUN] no se escribe")
+        return
+
+    sample = rows[0] if rows else {}
+    fieldnames = [k for k in sample if k != "type"] + ["type"]
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+    print(f"  ✅ {csv_path} actualizado")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -734,6 +745,37 @@ def get_tracklist(artist: str, album: str) -> list[str]:
     return tracks
 
 
+def get_release_date_from_mb(artist: str, album: str) -> Optional[str]:
+    """
+    Busca la fecha de lanzamiento en MusicBrainz.
+    Retorna fecha ISO (YYYY-MM-DD) o None si no la encuentra.
+    Fechas parciales (YYYY o YYYY-MM) se completan con -01.
+    """
+    a_q = _mb_escape(artist)
+    b_q = _mb_escape(album)
+
+    data = mb_get("release", {"query": f'artist:"{a_q}" AND release:"{b_q}"', "limit": 5})
+    if not data or not data.get("releases"):
+        data = mb_get("release", {"query": f'release:"{b_q}" AND artist:"{a_q}"', "limit": 5})
+
+    if not data or not data.get("releases"):
+        return None
+
+    releases = data["releases"]
+    best = next((r for r in releases if str(r.get("score", 0)) == "100"), releases[0])
+
+    raw = best.get("date", "").strip()
+    if not raw:
+        return None
+
+    parts = raw.split("-")
+    if len(parts) == 1:
+        return f"{parts[0]}-01-01"
+    if len(parts) == 2:
+        return f"{parts[0]}-{parts[1]}-01"
+    return raw
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 #  LASTFM DB
 # ─────────────────────────────────────────────────────────────────────────────
@@ -837,11 +879,9 @@ CREATE TABLE IF NOT EXISTS albums (
     name                      TEXT NOT NULL,
     name_normalized           TEXT NOT NULL,
     release_date              TEXT,
-    store_date                TEXT,
     purchase_date             TEXT,
     listened_date             TEXT,
-    days_release_to_store     INTEGER,
-    days_store_to_purchase    INTEGER,
+    days_release_to_purchase  INTEGER,
     days_purchase_to_listened INTEGER,
     UNIQUE(artist_id, name_normalized)
 );
@@ -904,7 +944,7 @@ def upsert_album(conn: sqlite3.Connection,
         ).lastrowid
 
     existing = conn.execute(
-        """SELECT album_id, release_date, store_date, purchase_date, listened_date
+        """SELECT album_id, release_date, purchase_date, listened_date
            FROM albums WHERE artist_id = ? AND name_normalized = ?""",
         (artist_id, album_key)
     ).fetchone()
@@ -914,7 +954,7 @@ def upsert_album(conn: sqlite3.Connection,
             """INSERT INTO albums
                (artist_id, name, name_normalized,
                 release_date, purchase_date, listened_date,
-                days_store_to_purchase, days_purchase_to_listened)
+                days_release_to_purchase, days_purchase_to_listened)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 artist_id, album, album_key,
@@ -924,7 +964,7 @@ def upsert_album(conn: sqlite3.Connection,
             )
         )
     else:
-        al_id, old_rel, old_store, old_pur, old_lis = existing
+        al_id, old_rel, old_pur, old_lis = existing
         new_rel = release_date  or old_rel
         new_pur = purchase_date or old_pur
         new_lis = listened_date or old_lis
@@ -934,7 +974,7 @@ def upsert_album(conn: sqlite3.Connection,
                    release_date              = ?,
                    purchase_date             = ?,
                    listened_date             = ?,
-                   days_store_to_purchase    = ?,
+                   days_release_to_purchase  = ?,
                    days_purchase_to_listened = ?
                    WHERE album_id = ?""",
                 (
@@ -956,18 +996,36 @@ def main():
                     "Last.fm y la base de datos. "
                     "Fuente de verdad: VTODOs del calendario de tareas."
     )
-    parser.add_argument(
-        "--since", type=int, default=0, metavar="DÍAS",
-        help="Días hacia atrás a consultar para VEVENTs (defecto: 0 = solo hoy)"
+    date_group = parser.add_mutually_exclusive_group()
+    date_group.add_argument(
+        "--since", type=int, metavar="DÍAS",
+        help="Procesar VTODOs de los últimos N días"
+    )
+    date_group.add_argument(
+        "--all-data", action="store_true",
+        help="Procesar todos los VTODOs sin límite de fecha"
     )
     parser.add_argument(
         "--dry-run", action="store_true",
         help="Solo muestra qué haría, sin escribir nada"
     )
+    parser.add_argument(
+        "--manual-tasks", action="store_true",
+        help="Detecta VTODOs sin VEVENT (compras manuales) y los añade al albums.csv con type=manual"
+    )
     args = parser.parse_args()
 
-    since_date = date.today() - timedelta(days=args.since)
-    print(f"🎵 sync_music.py — desde {since_date.isoformat()}"
+    if args.all_data:
+        since_date = date.min
+        since_label = "todos los datos"
+    elif args.since:
+        since_date = date.today() - timedelta(days=args.since)
+        since_label = f"últimos {args.since} días (desde {since_date.isoformat()})"
+    else:
+        since_date = date.today()
+        since_label = f"solo hoy ({since_date.isoformat()})"
+
+    print(f"🎵 sync_music.py — {since_label}"
           f"{' [DRY RUN]' if args.dry_run else ''}")
     print("=" * 60)
 
@@ -1000,10 +1058,7 @@ def main():
     # VEVENTs: todos (sin filtro de fecha) para poder cruzar release_date con
     # cualquier VTODO, no solo los del rango --since.
     events_all = parse_events(raw_events, date.min)   # sin filtro de fecha
-    events_in_range = {k: v for k, v in events_all.items()
-                       if v["release_date"] >= since_date.isoformat()}
     tasks = parse_tasks(raw_tasks)
-    print(f"   VEVENTs en rango:   {len(events_in_range)}")
     print(f"   VEVENTs total:      {len(events_all)}")
     print(f"   VTODOs total:       {len(tasks)}")
 
@@ -1015,45 +1070,9 @@ def main():
     else:
         print("   Sin VTODOs que reparar")
 
-    # ── 4. Crear VTODOs para VEVENTs en rango sin tarea ──────────────────────
-    print(f"\n➕ Comprobando VEVENTs en rango sin VTODO...")
-    stats = {"vtodo_created": 0, "listened_updated": 0, "already_ok": 0,
+    # ── 4. Abrir DBs ──────────────────────────────────────────────────────────
+    stats = {"listened_updated": 0, "already_ok": 0,
              "no_listen": 0, "airsonic_found": 0, "db_updated": 0}
-
-    for key, ev in events_in_range.items():
-        if key in tasks:
-            continue  # ya existe VTODO, nada que crear
-
-        artist       = ev["artist"]
-        album        = ev["album"]
-        release_date = ev["release_date"]
-
-        print(f"  ➕ Sin VTODO → {artist} — {album} ({release_date})")
-        if not args.dry_run:
-            href = create_vtodo(artist, album, release_date)
-            if href:
-                print(f"    ✅ VTODO creado: {href}")
-                new_task = {
-                    "artist":        artist,
-                    "album":         album,
-                    "purchase_date": release_date,
-                    "listened_date": None,
-                    "completed":     False,
-                    "href":          href,
-                    "uid":           "",
-                    "ical_text":     "",
-                    "has_dtstart":   True,
-                    "due":           None,
-                }
-                tasks[key] = new_task
-                stats["vtodo_created"] += 1
-            else:
-                print("    ❌ Error creando VTODO, se salta")
-        else:
-            print(f"    [DRY RUN] crearía VTODO")
-            stats["vtodo_created"] += 1
-
-    # ── 5. Abrir DBs ──────────────────────────────────────────────────────────
     lastfm_conn: Optional[sqlite3.Connection] = None
     if os.path.exists(LASTFM_DB):
         lastfm_conn = sqlite3.connect(LASTFM_DB)
@@ -1069,7 +1088,6 @@ def main():
 
     # ── 6. Loop principal: un VTODO a la vez ─────────────────────────────────
     print(f"\n⚙️  Procesando {len(tasks)} VTODO(s) como fuente de verdad...")
-
     for key, task in tasks.items():
         artist        = task["artist"]
         album         = task["album"]
@@ -1078,9 +1096,30 @@ def main():
         listened_date = task.get("listened_date")   # COMPLETED del VTODO
         is_completed  = task.get("completed", False)
 
+        # Filtrar por rango de fechas (purchase_date como referencia)
+        if purchase_date and since_date != date.min:
+            try:
+                if date.fromisoformat(purchase_date) < since_date:
+                    continue
+            except ValueError:
+                pass
+
         # release_date: del VEVENT cruzado por nombre (puede ser None)
-        ev            = events_all.get(key)
-        release_date  = ev["release_date"] if ev else None
+        ev           = events_all.get(key)
+        release_date = ev["release_date"] if ev else None
+
+        if release_date is None:
+            print(f"\n  🎸 {artist} — {album}  (sin VEVENT, buscando en MusicBrainz...)")
+            release_date = get_release_date_from_mb(artist, album)
+            if release_date:
+                print(f"    📅 MusicBrainz: lanzamiento el {release_date}")
+            else:
+                print(f"    ❓ No encontrado en MusicBrainz")
+                user_input = input(
+                    f"    Fecha de lanzamiento para '{artist} — {album}'"
+                    f" (YYYY-MM-DD, vacío para omitir): "
+                ).strip()
+                release_date = user_input or None
 
         print(f"\n  🎸 {artist} — {album}"
               f"  (release={release_date or '?'}"
@@ -1176,11 +1215,16 @@ def main():
             print(f"    [DRY RUN] pondría COMPLETED={first_listen.isoformat()}")
             stats["listened_updated"] += 1
 
-    # ── 7. Resumen ────────────────────────────────────────────────────────────
+    # ── 7. Reclasificar entradas manuales en el CSV ──────────────────────────
+    if args.manual_tasks:
+        manual_keys = {key for key in tasks if key not in events_all}
+        print(f"\n📋 --manual-tasks: {len(manual_keys)} VTODO(s) sin VEVENT")
+        reclassify_csv_manual(STORE_CSV, manual_keys, dry_run=args.dry_run)
+
+    # ── 8. Resumen ────────────────────────────────────────────────────────────
     print("\n" + "=" * 60)
     print("📊 Resumen:")
     print(f"   VTODOs procesados:         {stats['db_updated']}")
-    print(f"   VTODOs creados:            {stats['vtodo_created']}")
     print(f"   Fechas de escucha nuevas:  {stats['listened_updated']}")
     print(f"   Ya completados:            {stats['already_ok']}")
     print(f"   Sin escucha en Last.fm:    {stats['no_listen']}")

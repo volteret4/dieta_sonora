@@ -29,7 +29,6 @@ RADICALE_USER     = os.getenv("RADICALE_USERNAME")
 RADICALE_PASSWORD = os.getenv("RADICALE_PW")
 CALENDAR_PATH     = ""    # path within Radicale
 
-STORE_CSV         = "albums.csv"              # artista,album,fecha
 DB_PATH           = "music_stats.db"
 JSON_PATH         = "stats.json"
 
@@ -76,11 +75,9 @@ CREATE TABLE IF NOT EXISTS albums (
     name                      TEXT NOT NULL,
     name_normalized           TEXT NOT NULL,
     release_date              TEXT,
-    store_date                TEXT,
     purchase_date             TEXT,
     listened_date             TEXT,
-    days_release_to_store     INTEGER,
-    days_store_to_purchase    INTEGER,
+    days_release_to_purchase  INTEGER,
     days_purchase_to_listened INTEGER,
     UNIQUE(artist_id, name_normalized)
 );
@@ -305,25 +302,6 @@ def parse_calendar_items(raw_items: list[str]) -> tuple[dict, dict]:
 #  CSV PARSING
 # ─────────────────────────────────────────────
 
-def load_store_csv(path: str) -> dict:
-    """Returns {(artist_lower, album_lower): store_date}"""
-    result = {}
-    if not os.path.exists(path):
-        print(f"  ⚠ CSV not found: {path}")
-        return result
-    with open(path, newline="", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            artist = row.get("artista", "").strip()
-            album  = row.get("album", "").strip()
-            fecha  = row.get("fecha", "").strip()
-            if artist and album:
-                result[(artist.lower(), album.lower())] = {
-                    "artist": artist,
-                    "album": album,
-                    "store_date": fecha or None,
-                }
-    return result
 
 # ─────────────────────────────────────────────
 #  MUSICBRAINZ GENRE LOOKUP
@@ -528,36 +506,30 @@ def days_between(d1: Optional[str], d2: Optional[str]) -> Optional[int]:
     except Exception:
         return None
 
-def merge_data(events: dict, tasks: dict, store: dict) -> list[dict]:
+def merge_data(events: dict, tasks: dict) -> list[dict]:
     """Combine all sources into a list of album records."""
-    # Collect all unique keys
-    all_keys = set(events.keys()) | set(tasks.keys()) | set(store.keys())
+    all_keys = set(events.keys()) | set(tasks.keys())
 
     records = []
     for key in all_keys:
         ev   = events.get(key, {})
         task = tasks.get(key, {})
-        st   = store.get(key, {})
 
-        # Prefer artist/album name from whichever source has it
-        artist = ev.get("artist") or task.get("artist") or st.get("artist") or key[0]
-        album  = ev.get("album")  or task.get("album")  or st.get("album")  or key[1]
+        artist = ev.get("artist") or task.get("artist") or key[0]
+        album  = ev.get("album")  or task.get("album")  or key[1]
 
-        release_date   = ev.get("release_date")
-        store_date     = st.get("store_date")
-        purchase_date  = task.get("purchase_date")
-        listened_date  = task.get("listened_date")
+        release_date  = ev.get("release_date")
+        purchase_date = task.get("purchase_date")
+        listened_date = task.get("listened_date")
 
         records.append({
             "artist":        artist,
             "album":         album,
             "genre":         None,  # filled in later
             "release_date":  release_date,
-            "store_date":    store_date,
             "purchase_date": purchase_date,
             "listened_date": listened_date,
-            "days_release_to_store":     days_between(release_date, store_date),
-            "days_store_to_purchase":    days_between(store_date, purchase_date),
+            "days_release_to_purchase":  days_between(release_date, purchase_date),
             "days_purchase_to_listened": days_between(purchase_date, listened_date),
         })
 
@@ -594,7 +566,7 @@ def save_record(conn: sqlite3.Connection, rec: dict) -> str:
     name_norm = _normalize(rec["album"])
 
     existing = conn.execute(
-        """SELECT album_id, release_date, store_date, purchase_date, listened_date
+        """SELECT album_id, release_date, purchase_date, listened_date
            FROM albums
            WHERE artist_id = ? AND name_normalized = ?""",
         (artist_id, name_norm),
@@ -605,25 +577,23 @@ def save_record(conn: sqlite3.Connection, rec: dict) -> str:
         conn.execute("""
             INSERT INTO albums
                 (artist_id, genre_id, name, name_normalized,
-                 release_date, store_date, purchase_date, listened_date,
-                 days_release_to_store, days_store_to_purchase, days_purchase_to_listened)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 release_date, purchase_date, listened_date,
+                 days_release_to_purchase, days_purchase_to_listened)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             artist_id, genre_id, rec["album"], name_norm,
-            rec.get("release_date"), rec.get("store_date"),
+            rec.get("release_date"),
             rec.get("purchase_date"), rec.get("listened_date"),
-            rec.get("days_release_to_store"),
-            rec.get("days_store_to_purchase"),
+            rec.get("days_release_to_purchase"),
             rec.get("days_purchase_to_listened"),
         ))
         return "created"
 
     # ── Album already exists: update any field that has improved data ────
-    album_id, old_release, old_store, old_purchase, old_listened = existing
+    album_id, old_release, old_purchase, old_listened = existing
 
     # Never overwrite a date/value already stored with None
     new_release  = rec.get("release_date")  or old_release
-    new_store    = rec.get("store_date")    or old_store
     new_purchase = rec.get("purchase_date") or old_purchase
     new_listened = rec.get("listened_date") or old_listened
 
@@ -635,8 +605,8 @@ def save_record(conn: sqlite3.Connection, rec: dict) -> str:
     new_genre_id = genre_id if genre_id is not None else old_genre_id
 
     changed = (
-        (new_store, new_purchase, new_listened, new_release, new_genre_id)
-        != (old_store, old_purchase, old_listened, old_release, old_genre_id)
+        (new_purchase, new_listened, new_release, new_genre_id)
+        != (old_purchase, old_listened, old_release, old_genre_id)
     )
     if not changed:
         return "skipped"
@@ -644,20 +614,16 @@ def save_record(conn: sqlite3.Connection, rec: dict) -> str:
     conn.execute("""
         UPDATE albums SET
             release_date              = ?,
-            store_date                = ?,
             purchase_date             = ?,
             listened_date             = ?,
             genre_id                  = ?,
-            days_release_to_store     = ?,
-            days_store_to_purchase    = ?,
+            days_release_to_purchase  = ?,
             days_purchase_to_listened = ?
         WHERE album_id = ?
     """, (
-        new_release,
-        new_store, new_purchase, new_listened,
+        new_release, new_purchase, new_listened,
         new_genre_id,
-        days_between(new_release, new_store),
-        days_between(new_store,   new_purchase),
+        days_between(new_release, new_purchase),
         days_between(new_purchase, new_listened),
         album_id,
     ))
@@ -681,11 +647,9 @@ def export_json(conn: sqlite3.Connection, path: str):
             al.name                       AS album,
             g.name                        AS genre,
             al.release_date,
-            al.store_date,
             al.purchase_date,
             al.listened_date,
-            al.days_release_to_store,
-            al.days_store_to_purchase,
+            al.days_release_to_purchase,
             al.days_purchase_to_listened
         FROM   albums  al
         JOIN   artists ar ON ar.artist_id = al.artist_id
@@ -755,14 +719,9 @@ def main():
     print(f"  VEVENT (releases):  {len(events)}")
     print(f"  VTODO  (purchases): {len(tasks)}")
 
-    # 3. Load CSV
-    print(f"\n📋 Loading store CSV ({STORE_CSV})...")
-    store = load_store_csv(STORE_CSV)
-    print(f"  Store entries: {len(store)}")
-
-    # 4. Merge all sources
+    # 3. Merge all sources
     print("\n🔗 Merging data...")
-    records = merge_data(events, tasks, store)
+    records = merge_data(events, tasks)
     print(f"  Total unique albums: {len(records)}")
 
     # 5. Open DB (creates tables on first run, idempotent afterwards)
