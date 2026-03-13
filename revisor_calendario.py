@@ -1,205 +1,179 @@
 #!/usr/bin/env python3
 """
-Script para exportar eventos de Radicale a CSV
-Formato esperado de eventos: $artist - $album
+Genera albums.csv con los álbumes que tienen VEVENT en el calendario de
+lanzamientos pero no tienen VTODO asociado en el calendario de tareas.
+El CSV es un snapshot limpio: cada ejecución lo sobreescribe por completo.
+
+Uso:
+    python revisor_calendario.py              # todos los VEVENTs pendientes
+    python revisor_calendario.py --since 365  # solo VEVENTs de los últimos N días
+    python revisor_calendario.py -o salida.csv
 """
 
 import argparse
 import csv
-from datetime import datetime, timedelta
-import caldav
-from caldav.elements import dav
-import sys
 import os
-from dotenv import load_dotenv
+import re
+import sys
+import unicodedata
+from datetime import date, datetime, timedelta
+from xml.etree import ElementTree as ET
 
-# Cargar variables de entorno desde archivo .env
-load_dotenv()
+import requests
+from icalendar import Calendar
+from sops_env import load_sops_env
 
-# CONFIGURACIÓN - Ajusta estos valores según tu instalación
-RADICALE_URL = os.getenv('RADICALE_URL', 'http://localhost:5232')
-RADICALE_USER = os.getenv('RADICALE_USERNAME', '')
-RADICALE_PASS = os.getenv('RADICALE_PW', '')
-CALENDAR_NAME = os.getenv('CALENDAR_NAME', 'calendar')
+load_sops_env()
+
+RADICALE_URL   = os.getenv('RADICALE_URL',      '').rstrip('/')
+RADICALE_USER  = os.getenv('RADICALE_USERNAME', '')
+RADICALE_PW    = os.getenv('RADICALE_PW',       '')
+RADICALE_BASE  = os.getenv('RADICALE_CALENDAR', '').rstrip('/')
+CALENDAR_NAME  = os.getenv('CALENDAR_NAME',     '')
+CALENDAR_TASKS = os.getenv('CALENDAR_TASKS',    '')
 
 
-def parse_event_summary(summary):
-    """
-    Parse el formato '$artist - $album' del resumen del evento.
-    Omite emojis/iconos al inicio (💿, 🎤, etc.).
-    Retorna (artist, album) o None si el formato no coincide.
-    """
-    if not summary:
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _normalize(s: str) -> str:
+    s = re.sub(r'\s+', ' ', s.strip().lower())
+    s = unicodedata.normalize('NFD', s)
+    return ''.join(c for c in s if unicodedata.category(c) != 'Mn')
+
+
+def _strip_emojis(s: str) -> str:
+    return re.sub(
+        r'^[\U00010000-\U0010ffff\u2000-\u2bff\u2600-\u26ff\u2700-\u27bf\s]+'
+        r'|[\U00010000-\U0010ffff\u2000-\u2bff\u2600-\u26ff\u2700-\u27bf\s]+$',
+        '', s,
+    ).strip()
+
+
+def _parse_summary(summary: str) -> tuple[str, str]:
+    summary = _strip_emojis(summary)
+    parts = re.split(r'\s+[-–—]\s+', summary, maxsplit=1)
+    if len(parts) == 2:
+        return _strip_emojis(parts[0]), _strip_emojis(parts[1])
+    return summary, ''
+
+
+def _parse_date(dt_val) -> date | None:
+    if dt_val is None:
         return None
-
-    # Eliminar emojis y caracteres al inicio (cualquier carácter no ASCII seguido de espacio)
-    cleaned = summary.strip()
-
-    # Remover emojis comunes al inicio
-    while cleaned and ord(cleaned[0]) > 127:  # Caracteres no ASCII (emojis)
-        cleaned = cleaned[1:].strip()
-
-    if not cleaned or ' - ' not in cleaned:
-        return None
-
-    parts = cleaned.split(' - ', 1)
-    if len(parts) != 2:
-        return None
-
-    artist = parts[0].strip()
-    album = parts[1].strip()
-
-    if not artist or not album:
-        return None
-
-    return (artist, album)
+    if hasattr(dt_val, 'dt'):
+        dt_val = dt_val.dt
+    if isinstance(dt_val, datetime):
+        return dt_val.date()
+    if isinstance(dt_val, date):
+        return dt_val
+    return None
 
 
-def get_events_from_radicale(since_days=0):
-    """
-    Obtiene eventos de Radicale desde hace 'since_days' días hasta hoy.
-    """
-    try:
-        # Conectar al servidor CalDAV
-        if RADICALE_USER and RADICALE_PASS:
-            client = caldav.DAVClient(
-                url=RADICALE_URL,
-                username=RADICALE_USER,
-                password=RADICALE_PASS
-            )
-        else:
-            client = caldav.DAVClient(url=RADICALE_URL)
+# ── CalDAV ────────────────────────────────────────────────────────────────────
 
-        # Obtener el principal (usuario)
-        principal = client.principal()
+def fetch_calendar_items(cal_name: str) -> list[dict]:
+    url = f'{RADICALE_URL}{RADICALE_BASE}/{cal_name}/'
+    body = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<C:calendar-query xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">'
+        '  <D:prop><D:getetag/><C:calendar-data/></D:prop>'
+        '  <C:filter><C:comp-filter name="VCALENDAR"/></C:filter>'
+        '</C:calendar-query>'
+    )
+    r = requests.request(
+        'REPORT', url,
+        data=body.encode('utf-8'),
+        headers={'Depth': '1', 'Content-Type': 'application/xml; charset=utf-8'},
+        auth=(RADICALE_USER, RADICALE_PW),
+        timeout=30,
+    )
+    r.raise_for_status()
+    ns = {'D': 'DAV:', 'C': 'urn:ietf:params:xml:ns:caldav'}
+    root = ET.fromstring(r.content)
+    items = []
+    for resp in root.findall('.//D:response', ns):
+        href_el  = resp.find('D:href', ns)
+        cal_data = resp.find('.//C:calendar-data', ns)
+        if href_el is not None and cal_data is not None and cal_data.text:
+            items.append({'href': href_el.text, 'ical_text': cal_data.text})
+    return items
 
-        # Obtener calendarios
-        calendars = principal.calendars()
 
-        if not calendars:
-            print("No se encontraron calendarios", file=sys.stderr)
-            return []
-
-        # Buscar el calendario específico o usar el primero
-        calendar = None
-        for cal in calendars:
-            cal_name = cal.name
-            if cal_name and CALENDAR_NAME in cal_name:
-                calendar = cal
-                break
-
-        if not calendar:
-            calendar = calendars[0]
-            print(f"Usando calendario: {calendar.name}", file=sys.stderr)
-
-        # Calcular rango de fechas
-        end_date = datetime.now().replace(hour=23, minute=59, second=59)
-        start_date = end_date - timedelta(days=since_days)
-        start_date = start_date.replace(hour=0, minute=0, second=0)
-
-        print(f"Buscando eventos desde {start_date.date()} hasta {end_date.date()}", file=sys.stderr)
-
-        # Buscar eventos en el rango
-        events = calendar.search(start=start_date, end=end_date)
-
-        releases = []
-
-        for event in events:
-            try:
-                # Obtener el componente del evento
-                vevent = event.vobject_instance.vevent
-
-                # Obtener el resumen (título)
-                summary = str(vevent.summary.value) if hasattr(vevent, 'summary') else None
-
-                if summary:
-                    parsed = parse_event_summary(summary)
-                    if parsed:
-                        releases.append(parsed)
-                        print(f"Encontrado: {parsed[0]} - {parsed[1]}", file=sys.stderr)
-                    else:
-                        print(f"Formato no válido: {summary}", file=sys.stderr)
-            except Exception as e:
-                print(f"Error procesando evento: {e}", file=sys.stderr)
-                continue
-
-        return releases
-
-    except Exception as e:
-        print(f"Error conectando a Radicale: {e}", file=sys.stderr)
-        sys.exit(1)
-
+# ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
-    parser = argparse.ArgumentParser(
-        description='Exporta eventos de Radicale a CSV (formato: artist,album)'
-    )
-    parser.add_argument(
-        '--since',
-        type=int,
-        default=0,
-        help='Número de días hacia atrás para buscar eventos (default: 0, solo hoy)'
-    )
-    parser.add_argument(
-        '-o', '--output',
-        default='albums.csv',
-        help='Archivo CSV de salida (default: albums.csv)'
-    )
-
+    parser = argparse.ArgumentParser(description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('--since', type=int, default=0, metavar='DÍAS',
+                        help='Limitar a VEVENTs de los últimos N días (0 = todos)')
+    parser.add_argument('-o', '--output', default='albums.csv',
+                        help='Archivo CSV de salida (default: albums.csv)')
     args = parser.parse_args()
 
-    # Leer CSV existente si existe
-    existing_releases = []
-    if os.path.exists(args.output):
-        print(f"Leyendo CSV existente: {args.output}", file=sys.stderr)
+    missing = [v for v in ('RADICALE_URL', 'CALENDAR_NAME', 'CALENDAR_TASKS')
+               if not os.getenv(v)]
+    if missing:
+        print(f'❌ Variables faltantes: {", ".join(missing)}')
+        sys.exit(1)
+
+    since_date = date.min if args.since == 0 else date.today() - timedelta(days=args.since)
+
+    print(f'📅 Descargando VEVENTs{f" (últimos {args.since} días)" if args.since else ""}...')
+    raw_events = fetch_calendar_items(CALENDAR_NAME)
+    print(f'   {len(raw_events)} eventos')
+
+    print('📋 Descargando VTODOs...')
+    raw_tasks = fetch_calendar_items(CALENDAR_TASKS)
+    print(f'   {len(raw_tasks)} tareas\n')
+
+    # Construir conjunto de claves que ya tienen VTODO
+    task_keys: set[tuple] = set()
+    for item in raw_tasks:
         try:
-            with open(args.output, 'r', newline='', encoding='utf-8') as csvfile:
-                reader = csv.reader(csvfile)
-                for row in reader:
-                    if len(row) >= 2:
-                        existing_releases.append((row[0], row[1]))
-            print(f"Encontrados {len(existing_releases)} lanzamientos existentes", file=sys.stderr)
-        except Exception as e:
-            print(f"Error leyendo CSV existente: {e}", file=sys.stderr)
+            cal = Calendar.from_ical(item['ical_text'])
+        except Exception:
+            continue
+        for comp in cal.walk():
+            if getattr(comp, 'name', '') != 'VTODO':
+                continue
+            artist, album = _parse_summary(str(comp.get('SUMMARY', '')))
+            if album:
+                task_keys.add((_normalize(artist), _normalize(album)))
 
-    # Obtener nuevos eventos del calendario
-    new_releases = get_events_from_radicale(since_days=args.since)
+    # Filtrar VEVENTs sin VTODO
+    pending: list[tuple[str, str]] = []
+    seen: set[tuple] = set()
+    for item in raw_events:
+        try:
+            cal = Calendar.from_ical(item['ical_text'])
+        except Exception:
+            continue
+        for comp in cal.walk():
+            if getattr(comp, 'name', '') != 'VEVENT':
+                continue
+            artist, album = _parse_summary(str(comp.get('SUMMARY', '')))
+            if not album:
+                continue
 
-    if not new_releases:
-        print("No se encontraron eventos nuevos con el formato esperado", file=sys.stderr)
-        if not existing_releases:
-            sys.exit(0)
-        print("Manteniendo lanzamientos existentes", file=sys.stderr)
-    else:
-        print(f"\nEncontrados {len(new_releases)} eventos nuevos del calendario", file=sys.stderr)
+            release = _parse_date(comp.get('DTSTART'))
+            if release and release < since_date:
+                continue
 
-    # Combinar lanzamientos existentes + nuevos
-    all_releases = existing_releases + new_releases
+            key = (_normalize(artist), _normalize(album))
+            if key in task_keys or key in seen:
+                continue
 
-    # Eliminar duplicados manteniendo el orden (primero aparecidos se mantienen)
-    seen = set()
-    unique_releases = []
-    for artist, album in all_releases:
-        key = (artist.lower(), album.lower())  # Comparar en minúsculas
-        if key not in seen:
             seen.add(key)
-            unique_releases.append((artist, album))
+            pending.append((artist, album))
 
-    # Escribir al CSV
-    with open(args.output, 'w', newline='', encoding='utf-8') as csvfile:
-        writer = csv.writer(csvfile)
-        for artist, album in unique_releases:
-            writer.writerow([artist, album])
+    # Escribir CSV (snapshot limpio)
+    with open(args.output, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=['artist', 'album', 'type'])
+        writer.writeheader()
+        for artist, album in pending:
+            writer.writerow({'artist': artist, 'album': album, 'type': 'vevent'})
 
-    duplicates_removed = len(all_releases) - len(unique_releases)
-    new_added = len(unique_releases) - len(existing_releases)
-
-    print(f"\n=== Resumen ===", file=sys.stderr)
-    print(f"Lanzamientos previos: {len(existing_releases)}", file=sys.stderr)
-    print(f"Eventos nuevos encontrados: {len(new_releases)}", file=sys.stderr)
-    print(f"Nuevos añadidos al CSV: {new_added}", file=sys.stderr)
-    print(f"Duplicados eliminados: {duplicates_removed}", file=sys.stderr)
-    print(f"Total en {args.output}: {len(unique_releases)}", file=sys.stderr)
+    print(f'✅ {len(pending)} álbumes pendientes escritos en {args.output}')
 
 
 if __name__ == '__main__':

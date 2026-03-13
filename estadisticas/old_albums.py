@@ -41,7 +41,7 @@ from typing import Optional
 from xml.etree import ElementTree as ET
 
 import requests
-from dotenv import load_dotenv
+from sops_env import load_sops_env
 from icalendar import Calendar, Event, Todo, vDatetime, vDate, vText
 
 # Intentar usar certifi para certificados actualizados.
@@ -52,7 +52,7 @@ try:
 except ImportError:
     _MB_VERIFY = True
 
-load_dotenv()
+load_sops_env()
 
 # ─────────────────────────────────────────────
 #  CONFIGURACIÓN

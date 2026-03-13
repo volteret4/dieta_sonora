@@ -31,10 +31,10 @@ Resiliencia:
 
 import sqlite3, json, time, re, os
 from datetime import datetime, timezone
-from dotenv import load_dotenv
+from sops_env import load_sops_env
 import requests
 
-load_dotenv()
+load_sops_env()
 
 # ─────────────────────────────────────────────
 #  CONFIGURACIÓN

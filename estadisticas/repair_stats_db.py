@@ -36,10 +36,10 @@ from typing import Optional
 from xml.etree import ElementTree as ET
 
 import requests
-from dotenv import load_dotenv
+from sops_env import load_sops_env
 from icalendar import Calendar, Todo, vDatetime, vText
 
-load_dotenv()
+load_sops_env()
 
 # ─────────────────────────────────────────────
 #  CONFIGURACIÓN

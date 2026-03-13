@@ -7,7 +7,7 @@ import os
 from typing import List, Dict, Any, Optional
 import dotenv
 
-load_dotenv()
+load_sops_env()
 
 class OrpheusChecker:
     def __init__(self, db_path: str, api_key: str, api_url: str):

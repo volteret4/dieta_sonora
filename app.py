@@ -1,30 +1,142 @@
 from flask import Flask, render_template, jsonify, request, send_file
 import json
 import os
+import re
 import subprocess
+import unicodedata
 import logging
 from datetime import datetime
+from xml.etree import ElementTree as ET
 from html_generator import generar_html, enrich_with_embeds
 import csv
+
+import requests
+from icalendar import Calendar
+from sops_env import load_sops_env
+
+load_sops_env()
 
 app = Flask(__name__)
 app.config['JSON_AS_ASCII'] = False
 
 # Configuración de rutas
-DATA_JSON = "/home/pepe/Scripts/Musica/orpheus-api/resultado_flacs.json"
-HTML_OUTPUT = "resumen_flacs.html"
+DATA_JSON = "/home/pepe/gits/pollo/dieta_sonora/resultados_flac.json"
+HTML_OUTPUT = "/home/pepe/gits/pollo/dieta_sonora/resumen_flacs.html"
 DOWNLOAD_FOLDER = "/mnt/NFS/lidarr/torrents_backup/watch_torrents"
-CSV_FILE = "albums.csv"
-EMBED_CACHE = "/home/pepe/Scripts/Musica/orpheus-api/embeds_cache.json"
+CSV_FILE = "/home/pepe/gits/pollo/dieta_sonora/albums.csv"
+EMBED_CACHE = "/home/pepe/gits/pollo/dieta_sonora/embeds_cache.json"
 
 # Rutas de los scripts de las acciones del header
-SCRIPT_CALENDARIO = "/home/pepe/Scripts/Musica/orpheus-api/main.sh"   # ← ajusta la ruta
+SCRIPT_CALENDARIO = "/home/pepe/gits/pollo/dieta_sonora/main.sh"   # ← ajusta la ruta
 SCRIPT_ESCUCHADOS = "/home/pepe/Scripts/Musica/discos-nuevos/discos_escuchados_calendario.py"
 AIRSONIC_URL = "http://192.168.1.133:4040/rest/startScan?u=admin&p=j2WQMyQLX9n9ohkY2vXk&v=1.15.0&c=curl&f=json&fullScan=false"
+
+# Radicale CalDAV
+RADICALE_URL   = os.getenv('RADICALE_URL',      '').rstrip('/')
+RADICALE_USER  = os.getenv('RADICALE_USERNAME', '')
+RADICALE_PW    = os.getenv('RADICALE_PW',       '')
+RADICALE_BASE  = os.getenv('RADICALE_CALENDAR', '').rstrip('/')
+CALENDAR_TASKS = os.getenv('CALENDAR_TASKS',    '')
 
 # Configuración de logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def _normalize(s: str) -> str:
+    s = re.sub(r'\s+', ' ', s.strip().lower())
+    s = unicodedata.normalize('NFD', s)
+    return ''.join(c for c in s if unicodedata.category(c) != 'Mn')
+
+
+def _strip_emojis(s: str) -> str:
+    return re.sub(
+        r'^[\U00010000-\U0010ffff\u2000-\u2bff\u2600-\u26ff\u2700-\u27bf\s]+'
+        r'|[\U00010000-\U0010ffff\u2000-\u2bff\u2600-\u26ff\u2700-\u27bf\s]+$',
+        '', s,
+    ).strip()
+
+
+def _parse_summary(summary: str) -> tuple[str, str]:
+    summary = _strip_emojis(summary)
+    parts = re.split(r'\s+[-–—]\s+', summary, maxsplit=1)
+    if len(parts) == 2:
+        return _strip_emojis(parts[0]), _strip_emojis(parts[1])
+    return summary, ''
+
+
+def find_album_for_group(json_data: list, group_id: str) -> tuple[str | None, str | None]:
+    """Devuelve (artist, album) para el group_id dado, o (None, None)."""
+    group_id = str(group_id).strip()
+    for album in json_data:
+        for g in album.get('groups', []):
+            if str(g.get('groupId', '')).strip() == group_id:
+                return album.get('artist'), album.get('album')
+    return None, None
+
+
+def delete_vtodo_in_radicale(artist: str, album: str) -> bool:
+    """Busca el VTODO de 'artist — album' en Radicale y lo elimina. Devuelve True si lo borró."""
+    if not RADICALE_URL or not CALENDAR_TASKS:
+        logger.warning('Radicale no configurado, no se puede eliminar VTODO')
+        return False
+
+    artist_n = _normalize(artist)
+    album_n  = _normalize(album)
+
+    url = f'{RADICALE_URL}{RADICALE_BASE}/{CALENDAR_TASKS}/'
+    body = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<C:calendar-query xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">'
+        '  <D:prop><D:getetag/><C:calendar-data/></D:prop>'
+        '  <C:filter><C:comp-filter name="VCALENDAR"/></C:filter>'
+        '</C:calendar-query>'
+    )
+    try:
+        r = requests.request(
+            'REPORT', url,
+            data=body.encode('utf-8'),
+            headers={'Depth': '1', 'Content-Type': 'application/xml; charset=utf-8'},
+            auth=(RADICALE_USER, RADICALE_PW),
+            timeout=30,
+        )
+        r.raise_for_status()
+    except Exception as e:
+        logger.error(f'Error obteniendo VTODOs de Radicale: {e}')
+        return False
+
+    ns = {'D': 'DAV:', 'C': 'urn:ietf:params:xml:ns:caldav'}
+    root = ET.fromstring(r.content)
+    for resp in root.findall('.//D:response', ns):
+        href_el  = resp.find('D:href', ns)
+        cal_data = resp.find('.//C:calendar-data', ns)
+        if href_el is None or cal_data is None or not cal_data.text:
+            continue
+        href = href_el.text
+        try:
+            cal = Calendar.from_ical(cal_data.text)
+        except Exception:
+            continue
+        for comp in cal.walk():
+            if getattr(comp, 'name', '') != 'VTODO':
+                continue
+            a, b = _parse_summary(str(comp.get('SUMMARY', '')))
+            if _normalize(a) == artist_n and _normalize(b) == album_n:
+                filename = os.path.basename(href.rstrip('/'))
+                del_url = f'{RADICALE_URL}{RADICALE_BASE}/{CALENDAR_TASKS}/{filename}'
+                try:
+                    dr = requests.delete(del_url, auth=(RADICALE_USER, RADICALE_PW), timeout=15)
+                    if dr.status_code in (200, 204):
+                        logger.info(f'VTODO eliminado: {artist} — {album}')
+                        return True
+                    logger.error(f'Error al eliminar VTODO: HTTP {dr.status_code}')
+                    return False
+                except Exception as e:
+                    logger.error(f'Error al eliminar VTODO: {e}')
+                    return False
+
+    logger.warning(f'VTODO no encontrado para: {artist} — {album}')
+    return False
 
 
 def regenerar_html():
@@ -181,10 +293,22 @@ def delete_album():
     data = request.json
     group_id = data.get('groupId')
 
-    if eliminar_grupo_de_datos(group_id):
-        return jsonify({"success": True, "message": "Álbum eliminado correctamente"})
-    else:
+    # Localizar artist/album antes de borrar del JSON
+    with open(DATA_JSON, 'r', encoding='utf-8') as f:
+        json_data = json.load(f)
+    artist, album = find_album_for_group(json_data, group_id)
+
+    if not eliminar_grupo_de_datos(group_id):
         return jsonify({"error": "Álbum no encontrado"}), 404
+
+    msg = "Álbum eliminado correctamente"
+    if artist and album:
+        if delete_vtodo_in_radicale(artist, album):
+            msg += " (VTODO eliminado de Radicale)"
+        else:
+            msg += " (VTODO no encontrado en Radicale)"
+
+    return jsonify({"success": True, "message": msg})
 
 
 @app.route('/api/airsonic', methods=['POST'])
