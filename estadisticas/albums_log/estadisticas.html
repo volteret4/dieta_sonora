@@ -444,7 +444,7 @@
                 border: "#2a2a30",
                 text: "#e4ddd0",
             };
-            const STAGE_COLORS = [C.teal, C.gold, C.purple];
+            const STAGE_COLORS = [C.teal, C.purple];
             const GENRE_PALETTE = [
                 "#c8a84b",
                 "#4a9e8e",
@@ -558,21 +558,17 @@
                 // KPIs
                 const kpi = useMemo(() => {
                     const d1 = filtered
-                        .map((a) => a.days_release_to_store)
+                        .map((a) => a.days_release_to_purchase)
                         .filter((v) => v != null);
                     const d2 = filtered
-                        .map((a) => a.days_store_to_purchase)
-                        .filter((v) => v != null);
-                    const d3 = filtered
                         .map((a) => a.days_purchase_to_listened)
                         .filter((v) => v != null);
                     return {
                         total: filtered.length,
                         listened: filtered.filter((a) => a.listened_date)
                             .length,
-                        avgRS: avg(d1),
-                        avgSP: avg(d2),
-                        avgPL: avg(d3),
+                        avgRP: avg(d1),
+                        avgPL: avg(d2),
                     };
                 }, [filtered]);
 
@@ -583,14 +579,11 @@
                         if (!map[a.artist])
                             map[a.artist] = {
                                 name: a.artist,
-                                rs: [],
-                                sp: [],
+                                rp: [],
                                 pl: [],
                             };
-                        if (a.days_release_to_store != null)
-                            map[a.artist].rs.push(a.days_release_to_store);
-                        if (a.days_store_to_purchase != null)
-                            map[a.artist].sp.push(a.days_store_to_purchase);
+                        if (a.days_release_to_purchase != null)
+                            map[a.artist].rp.push(a.days_release_to_purchase);
                         if (a.days_purchase_to_listened != null)
                             map[a.artist].pl.push(a.days_purchase_to_listened);
                     });
@@ -600,14 +593,12 @@
                                 v.name.length > 18
                                     ? v.name.slice(0, 18) + "…"
                                     : v.name,
-                            "Lanz→Tienda": avg(v.rs),
-                            "Tienda→Compra": avg(v.sp),
+                            "Lanz→Compra": avg(v.rp),
                             "Compra→Escucha": avg(v.pl),
                         }))
                         .filter(
                             (v) =>
-                                v["Lanz→Tienda"] ||
-                                v["Tienda→Compra"] ||
+                                v["Lanz→Compra"] ||
                                 v["Compra→Escucha"],
                         );
                 }, [filtered]);
@@ -618,18 +609,15 @@
                     filtered.forEach((a) => {
                         const g = a.genre || "Sin género";
                         if (!map[g])
-                            map[g] = { name: g, rs: [], sp: [], pl: [] };
-                        if (a.days_release_to_store != null)
-                            map[g].rs.push(a.days_release_to_store);
-                        if (a.days_store_to_purchase != null)
-                            map[g].sp.push(a.days_store_to_purchase);
+                            map[g] = { name: g, rp: [], pl: [] };
+                        if (a.days_release_to_purchase != null)
+                            map[g].rp.push(a.days_release_to_purchase);
                         if (a.days_purchase_to_listened != null)
                             map[g].pl.push(a.days_purchase_to_listened);
                     });
                     return Object.values(map).map((v) => ({
                         name: v.name,
-                        "Lanz→Tienda": avg(v.rs),
-                        "Tienda→Compra": avg(v.sp),
+                        "Lanz→Compra": avg(v.rp),
                         "Compra→Escucha": avg(v.pl),
                     }));
                 }, [filtered]);
@@ -640,15 +628,14 @@
                         .filter(
                             (a) =>
                                 a.release_date &&
-                                a.days_release_to_store != null,
+                                a.days_release_to_purchase != null,
                         )
                         .map((a) => ({
                             x:
                                 new Date(a.release_date).getFullYear() +
                                 new Date(a.release_date).getMonth() / 12,
                             y:
-                                (a.days_release_to_store || 0) +
-                                (a.days_store_to_purchase || 0) +
+                                (a.days_release_to_purchase || 0) +
                                 (a.days_purchase_to_listened || 0),
                             name: `${a.artist} — ${a.album}`,
                         }));
@@ -697,8 +684,7 @@
                     );
 
                 const stageKeys = [
-                    "Lanz→Tienda",
-                    "Tienda→Compra",
+                    "Lanz→Compra",
                     "Compra→Escucha",
                 ];
 
@@ -810,13 +796,8 @@
                                 `${kpi.total > 0 ? Math.round((kpi.listened / kpi.total) * 100) : 0}% del total`,
                             ),
                             kpiCard(
-                                fmtD(kpi.avgRS),
-                                "Prom. Lanz→Tienda",
-                                "días hasta disponibilidad",
-                            ),
-                            kpiCard(
-                                fmtD(kpi.avgSP),
-                                "Prom. Tienda→Compra",
+                                fmtD(kpi.avgRP),
+                                "Prom. Lanz→Compra",
                                 "días hasta compra",
                             ),
                             kpiCard(
@@ -1103,10 +1084,6 @@
                                         ),
                                         React.createElement(
                                             "th",
-                                            thProps("store_date", "Tienda"),
-                                        ),
-                                        React.createElement(
-                                            "th",
                                             thProps("purchase_date", "Compra"),
                                         ),
                                         React.createElement(
@@ -1119,15 +1096,8 @@
                                         React.createElement(
                                             "th",
                                             thProps(
-                                                "days_release_to_store",
-                                                "L→T",
-                                            ),
-                                        ),
-                                        React.createElement(
-                                            "th",
-                                            thProps(
-                                                "days_store_to_purchase",
-                                                "T→C",
+                                                "days_release_to_purchase",
+                                                "L→C",
                                             ),
                                         ),
                                         React.createElement(
@@ -1169,11 +1139,6 @@
                                             React.createElement(
                                                 "td",
                                                 { className: "td-date" },
-                                                fmtDate(a.store_date),
-                                            ),
-                                            React.createElement(
-                                                "td",
-                                                { className: "td-date" },
                                                 fmtDate(a.purchase_date),
                                             ),
                                             React.createElement(
@@ -1188,14 +1153,7 @@
                                                 "td",
                                                 { className: "td-days" },
                                                 daysBadge(
-                                                    a.days_release_to_store,
-                                                ),
-                                            ),
-                                            React.createElement(
-                                                "td",
-                                                { className: "td-days" },
-                                                daysBadge(
-                                                    a.days_store_to_purchase,
+                                                    a.days_release_to_purchase,
                                                 ),
                                             ),
                                             React.createElement(
