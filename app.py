@@ -20,7 +20,7 @@ import requests
 from icalendar import Calendar
 
 # Importaciones locales (asegúrate de que los archivos estén en el mismo dir o PYTHONPATH)
-from sops_env import load_sops_env
+from tools.sops_env import load_sops_env
 from html_generator import generar_html, enrich_with_embeds
 
 # --- INICIALIZACIÓN ---
@@ -63,12 +63,10 @@ os.makedirs(WORK_DIR, exist_ok=True)
 # Radicale
 CALENDAR_URL = "https://radicale.pollete.duckdns.org/pollo/982339b6-2686-86aa-068c-d6dcdb8f712c/"
 TASKS_URL = "https://radicale.pollete.duckdns.org/pollo/00169e81-e5f4-d26a-d1c9-23a3dad5ea5b/"
-RAD_USER = "pollo"
-RAD_PW = "iT4wZKIZ4TXU3qtI0Nzy"
 
 # Telegram
-TELEGRAM_TOKEN = "840861295:AAH-AOiBujRGygjDobJHuS81EASgbPH-ciU"
-CHAT_ID = "905051261"
+TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
+CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
 # Estado global del proceso TTS
 conversion_status = {
@@ -308,7 +306,7 @@ END:VCALENDAR"""
 
         requests.put(f"{CALENDAR_URL}{event_uid}.ics",
                         data=ics_event.encode('utf-8'),
-                        auth=(RAD_USER, RAD_PW),
+                        auth=(RADICALE_USER, RADICALE_PW),
                         headers={"Content-Type": "text/calendar; charset=utf-8"})
 
         # 5. Crear Tarea en Radicale
@@ -326,7 +324,7 @@ END:VCALENDAR"""
 
         requests.put(f"{TASKS_URL}{event_uid}.ics",
                         data=ics_task.encode('utf-8'),
-                        auth=(RAD_USER, RAD_PW),
+                        auth=(RADICALE_USER, RADICALE_PW),
                         headers={"Content-Type": "text/calendar; charset=utf-8"})
 
         # 6. Notificación Telegram

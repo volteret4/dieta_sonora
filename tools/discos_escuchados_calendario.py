@@ -16,11 +16,11 @@ import argparse
 from datetime import datetime, timedelta
 from caldav import DAVClient
 from icalendar import Calendar
-import pytz
-from dotenv import load_dotenv
+from sops_env import load_sops_env
 import os
 
-load_dotenv()
+load_sops_env()
+
 
 # ==================== CONFIGURACIÓN ====================
 LASTFM_API_KEY = os.getenv("LASTFM_API_KEY")

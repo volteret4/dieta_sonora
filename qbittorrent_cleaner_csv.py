@@ -2,7 +2,7 @@ import csv
 import os
 import argparse
 from qbittorrentapi import Client
-from sops_env import load_sops_env
+from tools.sops_env import load_sops_env
 
 load_sops_env()
 
@@ -22,7 +22,7 @@ def check_albums_in_qb(clean_mode=False):
         return
 
     torrents = qbt_client.torrents_info()
-    
+
     albums_restantes = []
     csv_filename = 'albums.csv'
 
@@ -33,18 +33,18 @@ def check_albums_in_qb(clean_mode=False):
     with open(csv_filename, mode='r', encoding='utf-8') as f:
         reader = csv.DictReader(f)
         fieldnames = reader.fieldnames
-        
+
         for row in reader:
             artist = row['artist'].strip().lower()
             album = row['album'].strip().lower()
-            
+
             found = False
             for t in torrents:
                 t_name = t.name.lower()
                 if artist in t_name and album in t_name:
                     found = True
                     break
-            
+
             if found:
                 print(f"[ENCONTRADO - ELIMINANDO] {row['artist']} - {row['album']}")
             else:
@@ -64,6 +64,6 @@ def check_albums_in_qb(clean_mode=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Chequea álbumes en qBittorrent.")
     parser.add_argument('--clean', action='store_true', help="Elimina del CSV los álbumes que ya están descargados.")
-    
+
     args = parser.parse_args()
     check_albums_in_qb(clean_mode=args.clean)

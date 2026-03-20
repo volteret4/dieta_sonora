@@ -4,7 +4,7 @@ import json
 import time
 import os
 from datetime import datetime
-from sops_env import load_sops_env
+from tools.sops_env import load_sops_env
 
 load_sops_env()
 

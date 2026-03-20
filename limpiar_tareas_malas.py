@@ -19,7 +19,7 @@ from xml.etree import ElementTree as ET
 
 import requests
 from icalendar import Calendar
-from sops_env import load_sops_env
+from tools.sops_env import load_sops_env
 
 load_sops_env()
 
