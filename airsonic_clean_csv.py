@@ -11,7 +11,7 @@ import sys
 import os
 import unicodedata
 from urllib.parse import urljoin
-from sops_env import load_sops_env
+from tools.sops_env import load_sops_env
 
 # Cargar variables de entorno desde .env
 load_sops_env()
