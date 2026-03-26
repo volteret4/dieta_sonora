@@ -16,8 +16,8 @@ import argparse
 from datetime import datetime, timedelta
 from caldav import DAVClient
 from icalendar import Calendar
-from sops_env import load_sops_env
 import os
+from sops_env import load_sops_env
 
 load_sops_env()
 
@@ -128,6 +128,16 @@ def normalize_text(text):
     # Limpiar espacios múltiples y convertir a minúsculas
     text = re.sub(r'\s+', ' ', text).strip().lower()
 
+    # Reemplazar '&' por 'and' para consistencia
+    text = text.replace('&', ' and ')
+
+    # Eliminar caracteres especiales de puntuación (puntos, comas)
+    text = re.sub(r'[^\w\s]', '', text)
+
+    # Limpiar espacios múltiples y convertir a minúsculas
+    text = re.sub(r'\s+', ' ', text).strip().lower()
+
+
     return text
 
 
@@ -144,20 +154,13 @@ def normalize_for_comparison(artist, album):
 
 
 def extract_artist_album(task_summary):
-    """
-    Extrae artista y álbum del formato: $artist - $album (fecha) [sello]
-    Retorna tupla (artista, álbum) normalizada
-    """
-    # Normalizar primero
-    normalized = normalize_text(task_summary)
-
-    # Buscar patrón "artista - álbum"
-    if ' - ' in normalized:
-        parts = normalized.split(' - ', 1)
-        artist = parts[0].strip()
-        album = parts[1].strip()
+    # Intentar separar por el guion que divide Artista - Álbum
+    if ' - ' in task_summary:
+        parts = task_summary.split(' - ', 1)
+        # Normalizamos individualmente después de separar
+        artist = normalize_text(parts[0])
+        album = normalize_text(parts[1])
         return (artist, album)
-
     return None
 
 
@@ -236,7 +239,7 @@ def mark_task_completed(todo):
             component['percent-complete'] = 100
 
             # Usar vDatetime para asegurar la serialización correcta
-            completed_dt = datetime.now(pytz.UTC)
+            completed_dt = datetime.datetime.now(datetime.timezone.utc)
             component['completed'] = vDatetime(completed_dt)
 
         # Guardar los cambios

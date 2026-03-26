@@ -13,6 +13,7 @@ import threading
 from datetime import datetime
 from xml.etree import ElementTree as ET
 from mutagen.flac import FLAC
+from wakeonlan import send_magic_packet
 
 from flask import Flask, render_template, jsonify, request, send_file, send_from_directory
 from flask_cors import CORS
@@ -251,6 +252,16 @@ def global_status():
 # -----------------------------------------------------------------------------
 # API_POLLO
 # -----------------------------------------------------------------------------
+
+# wakeonlan
+@app.route('/wakeonlan', methods=['POST'])
+def wol_endpoint():
+    mac = request.form.get('mac')
+    if mac:
+        send_magic_packet(mac)
+        return f"Magic packet enviado a {mac}", 200
+    return "Falta MAC", 400
+
 
 # Mover disco descargado.
 @app.route('/copiar-album', methods=['POST'])
