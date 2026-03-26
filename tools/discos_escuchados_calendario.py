@@ -16,8 +16,9 @@ import argparse
 from datetime import datetime, timedelta
 from caldav import DAVClient
 from icalendar import Calendar
-import os
 from sops_env import load_sops_env
+import os
+import pytz
 
 load_sops_env()
 
@@ -239,7 +240,7 @@ def mark_task_completed(todo):
             component['percent-complete'] = 100
 
             # Usar vDatetime para asegurar la serialización correcta
-            completed_dt = datetime.datetime.now(datetime.timezone.utc)
+            completed_dt = datetime.now(pytz.UTC)
             component['completed'] = vDatetime(completed_dt)
 
         # Guardar los cambios
