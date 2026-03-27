@@ -208,7 +208,8 @@ def enrich_with_embeds(json_data, cache_file=None):
 
 # ──────────────────────────────────────────────────────────────────────────────
 
-def generar_html(json_data):
+def generar_html(json_data=None):
+    """Genera la shell estática. Los datos se cargan en runtime desde /api/albums."""
     html = """
     <!DOCTYPE html>
     <html lang="es">
@@ -545,53 +546,10 @@ def generar_html(json_data):
                     </div>
                 </div>
                 <div class="albums-grid">
-    """
-
-    # Procesar cada album
-    for album in json_data:
-        for group in album["groups"]:
-            cover = group.get("cover", "")
-            artist = album["artist"]
-            album_name = album["album"]
-            flac_count = group["flacCount"]
-            group_id = group["groupId"]
-
-            # Encontrar la fecha más antigua (original)
-            oldest_year = min(
-                (t.get("remasterYear", 9999) for t in group["torrents"] if t.get("remasterYear")),
-                default="Unknown"
-            )
-
-            # Escapar comillas para JavaScript
-            artist_escaped = artist.replace("'", "\\'").replace('"', '\\"')
-            album_escaped = album_name.replace("'", "\\'").replace('"', '\\"')
-
-            # Crear la portada del álbum con botón eliminar
-            html += f"""
-                <div class="album" onclick="showTorrents({group_id}, '{artist_escaped}', '{album_escaped}', {oldest_year}, {flac_count})" id="album-{group_id}">
-                    <button class="delete-btn" onclick="deleteAlbum({group_id}, event)" title="Eliminar álbum">×</button>
-                    <img src="{cover}" alt="{artist} - {album_name}">
-                    <div class="album-artist">{artist}</div>
-                    <div class="album-name">{album_name}</div>
-                    <div class="album-date">({oldest_year}) · {flac_count} FLAC{'s' if flac_count > 1 else ''}</div>
+                    <p style="color:#7a8694;padding:20px">Cargando álbumes...</p>
                 </div>
-            """
-
-            # Guardar los datos de los torrents y embeds en scripts de datos
-            youtube_embed = album.get("youtube_embed", "")
-            bandcamp_embed = album.get("bandcamp_embed", "")
-
-            html += f"""
-                <script>
-                    if (!window.torrentData) window.torrentData = {{}};
-                    window.torrentData[{group_id}] = {json.dumps(group["torrents"])};
-                    if (!window.embedData) window.embedData = {{}};
-                    window.embedData[{group_id}] = {{
-                        youtube: {json.dumps(youtube_embed)},
-                        bandcamp: {json.dumps(bandcamp_embed)}
-                    }};
-                </script>
-            """
+            </div>
+    """
 
     html += """
                 </div>
@@ -607,16 +565,63 @@ def generar_html(json_data):
 
         <script>
             let currentSelected = null;
+            window.torrentData = {};
+            window.embedData = {};
 
             function showNotification(message, isError = false) {
                 const notification = document.getElementById('notification');
                 notification.textContent = message;
                 notification.className = 'notification show' + (isError ? ' error' : '');
-
-                setTimeout(() => {
-                    notification.classList.remove('show');
-                }, 3000);
+                setTimeout(() => { notification.classList.remove('show'); }, 3000);
             }
+
+            async function loadAlbums() {
+                const grid = document.querySelector('.albums-grid');
+                try {
+                    const response = await fetch('/api/albums');
+                    if (!response.ok) throw new Error('HTTP ' + response.status);
+                    const data = await response.json();
+
+                    window.torrentData = {};
+                    window.embedData = {};
+                    grid.innerHTML = '';
+
+                    for (const album of data) {
+                        for (const group of album.groups) {
+                            const groupId = group.groupId;
+                            window.torrentData[groupId] = group.torrents;
+                            window.embedData[groupId] = {
+                                youtube: album.youtube_embed || '',
+                                bandcamp: album.bandcamp_embed || ''
+                            };
+
+                            const years = (group.torrents || []).map(t => t.remasterYear).filter(Boolean);
+                            const oldestYear = years.length > 0 ? Math.min(...years) : 'Unknown';
+                            const flacCount = group.flacCount || 0;
+
+                            const div = document.createElement('div');
+                            div.className = 'album';
+                            div.id = 'album-' + groupId;
+                            div.onclick = () => showTorrents(groupId, album.artist, album.album, oldestYear, flacCount);
+                            div.innerHTML =
+                                '<button class="delete-btn" onclick="deleteAlbum(' + groupId + ', event)" title="Eliminar álbum">×</button>' +
+                                '<img src="' + (group.cover || '') + '" alt="' + album.artist + ' - ' + album.album + '">' +
+                                '<div class="album-artist">' + album.artist + '</div>' +
+                                '<div class="album-name">' + album.album + '</div>' +
+                                '<div class="album-date">(' + oldestYear + ') · ' + flacCount + ' FLAC' + (flacCount !== 1 ? 's' : '') + '</div>';
+                            grid.appendChild(div);
+                        }
+                    }
+
+                    if (grid.children.length === 0) {
+                        grid.innerHTML = '<p style="color:#7a8694;padding:20px">No hay álbumes pendientes.</p>';
+                    }
+                } catch (e) {
+                    grid.innerHTML = '<p style="color:#e74c3c;padding:20px">Error cargando álbumes: ' + e.message + '</p>';
+                }
+            }
+
+            document.addEventListener('DOMContentLoaded', loadAlbums);
 
             function showTorrents(groupId, artist, albumName, year, flacCount) {
                 // Actualizar selección visual
