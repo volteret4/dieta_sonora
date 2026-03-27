@@ -139,7 +139,6 @@ def eliminar_grupo_de_datos(group_id):
     if found:
         with open(DATA_JSON, "w", encoding="utf-8") as f:
             json.dump(new_json_data, f, ensure_ascii=False, indent=2)
-        # Sincronizar CSV preservando columna type
         existing_types = _read_csv_types()
         rows = []
         for a in new_json_data:
@@ -262,6 +261,15 @@ def index():
 def discos_nuevos():
     return send_file(HTML_OUTPUT) if os.path.exists(HTML_OUTPUT) else ("No encontrado", 404)
 
+@app.route('/api/albums')
+def api_albums():
+    """Sirve el JSON de álbumes enriquecido con embeds (fuente de verdad para el frontend)."""
+    with open(DATA_JSON, 'r', encoding='utf-8') as f:
+        json_data = json.load(f)
+    json_data = enrich_with_embeds(json_data, cache_file=EMBED_CACHE)
+    return jsonify(json_data)
+
+
 @app.route('/api/delete', methods=['POST'])
 def delete_album():
     data = request.json
@@ -272,12 +280,6 @@ def delete_album():
 
     if not eliminar_grupo_de_datos(group_id):
         return jsonify({"error": "Álbum no encontrado"}), 404
-
-    try:
-        regenerar_html()
-    except Exception as e:
-        logger.error(f"Error regenerando HTML: {e}")
-        return jsonify({"error": f"Álbum eliminado del JSON pero error regenerando HTML: {e}"}), 500
 
     msg = "Álbum eliminado correctamente"
     if artist and album:
