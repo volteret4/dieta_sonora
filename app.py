@@ -263,10 +263,15 @@ def discos_nuevos():
 
 @app.route('/api/albums')
 def api_albums():
-    """Sirve el JSON de álbumes enriquecido con embeds (fuente de verdad para el frontend)."""
+    """Sirve el JSON de álbumes enriquecido con embeds y tipo (vevent/manual/top10)."""
     with open(DATA_JSON, 'r', encoding='utf-8') as f:
         json_data = json.load(f)
     json_data = enrich_with_embeds(json_data, cache_file=EMBED_CACHE)
+    # Añadir tipo desde albums.csv
+    tipos = _read_csv_types()
+    for album in json_data:
+        key = (_normalize(album.get('artist', '')), _normalize(album.get('album', '')))
+        album['type'] = tipos.get(key, 'vevent')
     return jsonify(json_data)
 
 
