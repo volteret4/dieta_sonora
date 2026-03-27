@@ -24,7 +24,7 @@
                 width: 100%;
             }
             .albums-container {
-                width: 80%;
+                width: 70%;
                 height: 100vh;
                 overflow-y: auto;
                 padding: 20px;
@@ -76,6 +76,26 @@
                 color: #7a8694;
                 margin-top: 5px;
             }
+            .album-type-badge {
+                position: absolute;
+                top: 10px;
+                left: 10px;
+                font-size: 10px;
+                font-weight: 700;
+                padding: 2px 6px;
+                border-radius: 4px;
+                letter-spacing: 0.5px;
+                text-transform: uppercase;
+                opacity: 0.85;
+            }
+            .badge-top10 { background: #f39c12; color: #0a0e27; }
+            .badge-manual { background: #8e44ad; color: #fff; }
+
+            .album.type-top10 { border-color: #f39c12; }
+            .album.type-top10:hover { border-color: #f39c12; box-shadow: 0 6px 12px rgba(243,156,18,0.35); }
+            .album.type-manual { border-color: #8e44ad; }
+            .album.type-manual:hover { border-color: #8e44ad; box-shadow: 0 6px 12px rgba(142,68,173,0.35); }
+
             .delete-btn {
                 position: absolute;
                 top: 10px;
@@ -103,7 +123,7 @@
                 background: #c0392b;
             }
             .sidebar {
-                width: 20%;
+                width: 30%;
                 height: 100vh;
                 background-color: #16213e;
                 border-left: 2px solid #1f2d4a;
@@ -334,295 +354,7 @@
                     </div>
                 </div>
                 <div class="albums-grid">
-    
-                <div class="album" onclick="showTorrents(1570505, 'Osees', 'Cara Maluco', 2026, 2)" id="album-1570505">
-                    <button class="delete-btn" onclick="deleteAlbum(1570505, event)" title="Eliminar álbum">×</button>
-                    <img src="https://ptpimg.me/5pa711.jpg" alt="Osees - Cara Maluco">
-                    <div class="album-artist">Osees</div>
-                    <div class="album-name">Cara Maluco</div>
-                    <div class="album-date">(2026) · 2 FLACs</div>
-                </div>
-            
-                <script>
-                    if (!window.torrentData) window.torrentData = {};
-                    window.torrentData[1570505] = [{"torrentId": 3539778, "media": "WEB", "encoding": "24bit Lossless", "remasterYear": 2026, "remasterTitle": "", "fileCount": 5, "size": 347911352, "downloadUrl": "https://orpheus.network/torrents.php?action=download&id=3539778&authkey=uSU3m-m-VQ4b5YFWmMMl6JPUz2dfcGiS&torrent_pass=4d47d8973df127cb1734c551f91753bc&usetoken=1"}, {"torrentId": 3539777, "media": "WEB", "encoding": "Lossless", "remasterYear": 2026, "remasterTitle": "", "fileCount": 5, "size": 109679104, "downloadUrl": "https://orpheus.network/torrents.php?action=download&id=3539777&authkey=uSU3m-m-VQ4b5YFWmMMl6JPUz2dfcGiS&torrent_pass=4d47d8973df127cb1734c551f91753bc&usetoken=1"}];
-                    if (!window.embedData) window.embedData = {};
-                    window.embedData[1570505] = {
-                        youtube: "<iframe width=\"400\" height=\"160\" src=\"https://www.youtube.com/embed/wYYaDHmP-Dc\" frameborder=\"0\" allow=\"autoplay; encrypted-media\" allowfullscreen></iframe>",
-                        bandcamp: ""
-                    };
-                </script>
-            
-                <div class="album" onclick="showTorrents(1499709, 'Yu Su', 'Foundry', 2025, 1)" id="album-1499709">
-                    <button class="delete-btn" onclick="deleteAlbum(1499709, event)" title="Eliminar álbum">×</button>
-                    <img src="https://ptpimg.me/zz75zh.jpg" alt="Yu Su - Foundry">
-                    <div class="album-artist">Yu Su</div>
-                    <div class="album-name">Foundry</div>
-                    <div class="album-date">(2025) · 1 FLAC</div>
-                </div>
-            
-                <script>
-                    if (!window.torrentData) window.torrentData = {};
-                    window.torrentData[1499709] = [{"torrentId": 3345551, "media": "WEB", "encoding": "Lossless", "remasterYear": 2025, "remasterTitle": "", "fileCount": 3, "size": 56031933, "downloadUrl": "https://orpheus.network/torrents.php?action=download&id=3345551&authkey=uSU3m-m-VQ4b5YFWmMMl6JPUz2dfcGiS&torrent_pass=4d47d8973df127cb1734c551f91753bc&usetoken=1"}];
-                    if (!window.embedData) window.embedData = {};
-                    window.embedData[1499709] = {
-                        youtube: "<iframe width=\"400\" height=\"160\" src=\"https://www.youtube.com/embed/otCaPBt5zBg\" frameborder=\"0\" allow=\"autoplay; encrypted-media\" allowfullscreen></iframe>",
-                        bandcamp: ""
-                    };
-                </script>
-            
-                <div class="album" onclick="showTorrents(1570334, 'Tanya Tagaq', 'Saputjiji', 2026, 2)" id="album-1570334">
-                    <button class="delete-btn" onclick="deleteAlbum(1570334, event)" title="Eliminar álbum">×</button>
-                    <img src="https://ptpimg.me/feyttt.jpg" alt="Tanya Tagaq - Saputjiji">
-                    <div class="album-artist">Tanya Tagaq</div>
-                    <div class="album-name">Saputjiji</div>
-                    <div class="album-date">(2026) · 2 FLACs</div>
-                </div>
-            
-                <script>
-                    if (!window.torrentData) window.torrentData = {};
-                    window.torrentData[1570334] = [{"torrentId": 3539442, "media": "WEB", "encoding": "24bit Lossless", "remasterYear": 2026, "remasterTitle": "", "fileCount": 12, "size": 387002730, "downloadUrl": "https://orpheus.network/torrents.php?action=download&id=3539442&authkey=uSU3m-m-VQ4b5YFWmMMl6JPUz2dfcGiS&torrent_pass=4d47d8973df127cb1734c551f91753bc&usetoken=1"}, {"torrentId": 3539370, "media": "WEB", "encoding": "Lossless", "remasterYear": 2026, "remasterTitle": "", "fileCount": 12, "size": 191174777, "downloadUrl": "https://orpheus.network/torrents.php?action=download&id=3539370&authkey=uSU3m-m-VQ4b5YFWmMMl6JPUz2dfcGiS&torrent_pass=4d47d8973df127cb1734c551f91753bc&usetoken=1"}];
-                    if (!window.embedData) window.embedData = {};
-                    window.embedData[1570334] = {
-                        youtube: "<iframe width=\"400\" height=\"160\" src=\"https://www.youtube.com/embed/5PeGhnOapx4\" frameborder=\"0\" allow=\"autoplay; encrypted-media\" allowfullscreen></iframe>",
-                        bandcamp: ""
-                    };
-                </script>
-            
-                <div class="album" onclick="showTorrents(1504034, 'The Black Dog', 'Loud Ambient 2', 2025, 2)" id="album-1504034">
-                    <button class="delete-btn" onclick="deleteAlbum(1504034, event)" title="Eliminar álbum">×</button>
-                    <img src="https://ptpimg.me/1478qn.png" alt="The Black Dog - Loud Ambient 2">
-                    <div class="album-artist">The Black Dog</div>
-                    <div class="album-name">Loud Ambient 2</div>
-                    <div class="album-date">(2025) · 2 FLACs</div>
-                </div>
-            
-                <script>
-                    if (!window.torrentData) window.torrentData = {};
-                    window.torrentData[1504034] = [{"torrentId": 3360096, "media": "WEB", "encoding": "24bit Lossless", "remasterYear": 2025, "remasterTitle": "", "fileCount": 11, "size": 863410683, "downloadUrl": "https://orpheus.network/torrents.php?action=download&id=3360096&authkey=uSU3m-m-VQ4b5YFWmMMl6JPUz2dfcGiS&torrent_pass=4d47d8973df127cb1734c551f91753bc&usetoken=1"}, {"torrentId": 3357584, "media": "WEB", "encoding": "Lossless", "remasterYear": 2025, "remasterTitle": "", "fileCount": 11, "size": 267414582, "downloadUrl": "https://orpheus.network/torrents.php?action=download&id=3357584&authkey=uSU3m-m-VQ4b5YFWmMMl6JPUz2dfcGiS&torrent_pass=4d47d8973df127cb1734c551f91753bc&usetoken=1"}];
-                    if (!window.embedData) window.embedData = {};
-                    window.embedData[1504034] = {
-                        youtube: "<iframe width=\"400\" height=\"160\" src=\"https://www.youtube.com/embed/aDqcnDGKApQ\" frameborder=\"0\" allow=\"autoplay; encrypted-media\" allowfullscreen></iframe>",
-                        bandcamp: ""
-                    };
-                </script>
-            
-                <div class="album" onclick="showTorrents(1571069, 'Bvdub', 'The Catastrophe Machine', 2026, 1)" id="album-1571069">
-                    <button class="delete-btn" onclick="deleteAlbum(1571069, event)" title="Eliminar álbum">×</button>
-                    <img src="https://ptpimg.me/cm1sca.jpg" alt="Bvdub - The Catastrophe Machine">
-                    <div class="album-artist">Bvdub</div>
-                    <div class="album-name">The Catastrophe Machine</div>
-                    <div class="album-date">(2026) · 1 FLAC</div>
-                </div>
-            
-                <script>
-                    if (!window.torrentData) window.torrentData = {};
-                    window.torrentData[1571069] = [{"torrentId": 3541569, "media": "WEB", "encoding": "Lossless", "remasterYear": 2026, "remasterTitle": "", "fileCount": 5, "size": 476454661, "downloadUrl": "https://orpheus.network/torrents.php?action=download&id=3541569&authkey=uSU3m-m-VQ4b5YFWmMMl6JPUz2dfcGiS&torrent_pass=4d47d8973df127cb1734c551f91753bc&usetoken=1"}];
-                    if (!window.embedData) window.embedData = {};
-                    window.embedData[1571069] = {
-                        youtube: "<iframe width=\"400\" height=\"160\" src=\"https://www.youtube.com/embed/KBZGK-QNuHY\" frameborder=\"0\" allow=\"autoplay; encrypted-media\" allowfullscreen></iframe>",
-                        bandcamp: ""
-                    };
-                </script>
-            
-                <div class="album" onclick="showTorrents(1518110, 'Jóhann Jóhannsson', 'Jóhann Jóhannsson: Piano Works', 2025, 3)" id="album-1518110">
-                    <button class="delete-btn" onclick="deleteAlbum(1518110, event)" title="Eliminar álbum">×</button>
-                    <img src="https://ptpimg.me/a99608.jpg" alt="Jóhann Jóhannsson - Jóhann Jóhannsson: Piano Works">
-                    <div class="album-artist">Jóhann Jóhannsson</div>
-                    <div class="album-name">Jóhann Jóhannsson: Piano Works</div>
-                    <div class="album-date">(2025) · 3 FLACs</div>
-                </div>
-            
-                <script>
-                    if (!window.torrentData) window.torrentData = {};
-                    window.torrentData[1518110] = [{"torrentId": 3400707, "media": "WEB", "encoding": "24bit Lossless", "remasterYear": 2025, "remasterTitle": "", "fileCount": 4, "size": 359046424, "downloadUrl": "https://orpheus.network/torrents.php?action=download&id=3400707&authkey=uSU3m-m-VQ4b5YFWmMMl6JPUz2dfcGiS&torrent_pass=4d47d8973df127cb1734c551f91753bc&usetoken=1"}, {"torrentId": 3400708, "media": "WEB", "encoding": "24bit Lossless", "remasterYear": 2025, "remasterTitle": "", "fileCount": 4, "size": 163299398, "downloadUrl": "https://orpheus.network/torrents.php?action=download&id=3400708&authkey=uSU3m-m-VQ4b5YFWmMMl6JPUz2dfcGiS&torrent_pass=4d47d8973df127cb1734c551f91753bc&usetoken=1"}, {"torrentId": 3402912, "media": "WEB", "encoding": "Lossless", "remasterYear": 2025, "remasterTitle": "", "fileCount": 4, "size": 27193181, "downloadUrl": "https://orpheus.network/torrents.php?action=download&id=3402912&authkey=uSU3m-m-VQ4b5YFWmMMl6JPUz2dfcGiS&torrent_pass=4d47d8973df127cb1734c551f91753bc&usetoken=1"}];
-                    if (!window.embedData) window.embedData = {};
-                    window.embedData[1518110] = {
-                        youtube: "<iframe width=\"400\" height=\"160\" src=\"https://www.youtube.com/embed/0CA_o2mC3PI\" frameborder=\"0\" allow=\"autoplay; encrypted-media\" allowfullscreen></iframe>",
-                        bandcamp: ""
-                    };
-                </script>
-            
-                <div class="album" onclick="showTorrents(1496980, 'Jóhann Jóhannsson', 'Jóhann Jóhannsson: Piano Works', 2025, 3)" id="album-1496980">
-                    <button class="delete-btn" onclick="deleteAlbum(1496980, event)" title="Eliminar álbum">×</button>
-                    <img src="https://ptpimg.me/lqb7e3.jpg" alt="Jóhann Jóhannsson - Jóhann Jóhannsson: Piano Works">
-                    <div class="album-artist">Jóhann Jóhannsson</div>
-                    <div class="album-name">Jóhann Jóhannsson: Piano Works</div>
-                    <div class="album-date">(2025) · 3 FLACs</div>
-                </div>
-            
-                <script>
-                    if (!window.torrentData) window.torrentData = {};
-                    window.torrentData[1496980] = [{"torrentId": 3338582, "media": "WEB", "encoding": "24bit Lossless", "remasterYear": 2025, "remasterTitle": "", "fileCount": 5, "size": 50539085, "downloadUrl": "https://orpheus.network/torrents.php?action=download&id=3338582&authkey=uSU3m-m-VQ4b5YFWmMMl6JPUz2dfcGiS&torrent_pass=4d47d8973df127cb1734c551f91753bc&usetoken=1"}, {"torrentId": 3338603, "media": "WEB", "encoding": "24bit Lossless", "remasterYear": 2025, "remasterTitle": "", "fileCount": 5, "size": 226786190, "downloadUrl": "https://orpheus.network/torrents.php?action=download&id=3338603&authkey=uSU3m-m-VQ4b5YFWmMMl6JPUz2dfcGiS&torrent_pass=4d47d8973df127cb1734c551f91753bc&usetoken=1"}, {"torrentId": 3338584, "media": "WEB", "encoding": "Lossless", "remasterYear": 2025, "remasterTitle": "", "fileCount": 5, "size": 17486129, "downloadUrl": "https://orpheus.network/torrents.php?action=download&id=3338584&authkey=uSU3m-m-VQ4b5YFWmMMl6JPUz2dfcGiS&torrent_pass=4d47d8973df127cb1734c551f91753bc&usetoken=1"}];
-                    if (!window.embedData) window.embedData = {};
-                    window.embedData[1496980] = {
-                        youtube: "<iframe width=\"400\" height=\"160\" src=\"https://www.youtube.com/embed/0CA_o2mC3PI\" frameborder=\"0\" allow=\"autoplay; encrypted-media\" allowfullscreen></iframe>",
-                        bandcamp: ""
-                    };
-                </script>
-            
-                <div class="album" onclick="showTorrents(1575999, 'Anna Calvi', 'Is This All There Is?', 2026, 2)" id="album-1575999">
-                    <button class="delete-btn" onclick="deleteAlbum(1575999, event)" title="Eliminar álbum">×</button>
-                    <img src="https://ptpimg.me/r0jhq4.jpg" alt="Anna Calvi - Is This All There Is?">
-                    <div class="album-artist">Anna Calvi</div>
-                    <div class="album-name">Is This All There Is?</div>
-                    <div class="album-date">(2026) · 2 FLACs</div>
-                </div>
-            
-                <script>
-                    if (!window.torrentData) window.torrentData = {};
-                    window.torrentData[1575999] = [{"torrentId": 3554926, "media": "WEB", "encoding": "24bit Lossless", "remasterYear": 2026, "remasterTitle": "", "fileCount": 5, "size": 313250125, "downloadUrl": "https://orpheus.network/torrents.php?action=download&id=3554926&authkey=uSU3m-m-VQ4b5YFWmMMl6JPUz2dfcGiS&torrent_pass=4d47d8973df127cb1734c551f91753bc&usetoken=1"}, {"torrentId": 3554768, "media": "WEB", "encoding": "Lossless", "remasterYear": 2026, "remasterTitle": "", "fileCount": 5, "size": 94577130, "downloadUrl": "https://orpheus.network/torrents.php?action=download&id=3554768&authkey=uSU3m-m-VQ4b5YFWmMMl6JPUz2dfcGiS&torrent_pass=4d47d8973df127cb1734c551f91753bc&usetoken=1"}];
-                    if (!window.embedData) window.embedData = {};
-                    window.embedData[1575999] = {
-                        youtube: "<iframe width=\"400\" height=\"160\" src=\"https://www.youtube.com/embed/B5JsGfVeYeU\" frameborder=\"0\" allow=\"autoplay; encrypted-media\" allowfullscreen></iframe>",
-                        bandcamp: ""
-                    };
-                </script>
-            
-                <div class="album" onclick="showTorrents(1575816, 'Prurient', 'Electronic City', 2026, 2)" id="album-1575816">
-                    <button class="delete-btn" onclick="deleteAlbum(1575816, event)" title="Eliminar álbum">×</button>
-                    <img src="https://ptpimg.me/puy288.jpg" alt="Prurient - Electronic City">
-                    <div class="album-artist">Prurient</div>
-                    <div class="album-name">Electronic City</div>
-                    <div class="album-date">(2026) · 2 FLACs</div>
-                </div>
-            
-                <script>
-                    if (!window.torrentData) window.torrentData = {};
-                    window.torrentData[1575816] = [{"torrentId": 3554456, "media": "WEB", "encoding": "24bit Lossless", "remasterYear": 2026, "remasterTitle": "", "fileCount": 5, "size": 136197608, "downloadUrl": "https://orpheus.network/torrents.php?action=download&id=3554456&authkey=uSU3m-m-VQ4b5YFWmMMl6JPUz2dfcGiS&torrent_pass=4d47d8973df127cb1734c551f91753bc&usetoken=1"}, {"torrentId": 3554457, "media": "WEB", "encoding": "Lossless", "remasterYear": 2026, "remasterTitle": "", "fileCount": 5, "size": 122872137, "downloadUrl": "https://orpheus.network/torrents.php?action=download&id=3554457&authkey=uSU3m-m-VQ4b5YFWmMMl6JPUz2dfcGiS&torrent_pass=4d47d8973df127cb1734c551f91753bc&usetoken=1"}];
-                    if (!window.embedData) window.embedData = {};
-                    window.embedData[1575816] = {
-                        youtube: "<iframe width=\"400\" height=\"160\" src=\"https://www.youtube.com/embed/YUOP6zyeiys\" frameborder=\"0\" allow=\"autoplay; encrypted-media\" allowfullscreen></iframe>",
-                        bandcamp: ""
-                    };
-                </script>
-            
-                <div class="album" onclick="showTorrents(1570607, 'Foo Fighters', 'Your Favorite Toy', 2026, 1)" id="album-1570607">
-                    <button class="delete-btn" onclick="deleteAlbum(1570607, event)" title="Eliminar álbum">×</button>
-                    <img src="https://img2.ptscreens.com/cover1b86497fe4d480d2.jpg" alt="Foo Fighters - Your Favorite Toy">
-                    <div class="album-artist">Foo Fighters</div>
-                    <div class="album-name">Your Favorite Toy</div>
-                    <div class="album-date">(2026) · 1 FLAC</div>
-                </div>
-            
-                <script>
-                    if (!window.torrentData) window.torrentData = {};
-                    window.torrentData[1570607] = [{"torrentId": 3540067, "media": "WEB", "encoding": "Lossless", "remasterYear": 2026, "remasterTitle": "", "fileCount": 2, "size": 26172808, "downloadUrl": "https://orpheus.network/torrents.php?action=download&id=3540067&authkey=uSU3m-m-VQ4b5YFWmMMl6JPUz2dfcGiS&torrent_pass=4d47d8973df127cb1734c551f91753bc&usetoken=1"}];
-                    if (!window.embedData) window.embedData = {};
-                    window.embedData[1570607] = {
-                        youtube: "<iframe width=\"400\" height=\"160\" src=\"https://www.youtube.com/embed/Lgy4a0tXz7M\" frameborder=\"0\" allow=\"autoplay; encrypted-media\" allowfullscreen></iframe>",
-                        bandcamp: ""
-                    };
-                </script>
-            
-                <div class="album" onclick="showTorrents(1567647, 'Mitski', 'Nothing’s About to Happen to Me', 2026, 3)" id="album-1567647">
-                    <button class="delete-btn" onclick="deleteAlbum(1567647, event)" title="Eliminar álbum">×</button>
-                    <img src="https://ptpimg.me/yoduii.jpg" alt="Mitski - Nothing’s About to Happen to Me">
-                    <div class="album-artist">Mitski</div>
-                    <div class="album-name">Nothing’s About to Happen to Me</div>
-                    <div class="album-date">(2026) · 3 FLACs</div>
-                </div>
-            
-                <script>
-                    if (!window.torrentData) window.torrentData = {};
-                    window.torrentData[1567647] = [{"torrentId": 3532768, "media": "WEB", "encoding": "24bit Lossless", "remasterYear": 2026, "remasterTitle": "", "fileCount": 12, "size": 733693771, "downloadUrl": "https://orpheus.network/torrents.php?action=download&id=3532768&authkey=uSU3m-m-VQ4b5YFWmMMl6JPUz2dfcGiS&torrent_pass=4d47d8973df127cb1734c551f91753bc&usetoken=1"}, {"torrentId": 3532636, "media": "WEB", "encoding": "Lossless", "remasterYear": 2026, "remasterTitle": "", "fileCount": 12, "size": 220168413, "downloadUrl": "https://orpheus.network/torrents.php?action=download&id=3532636&authkey=uSU3m-m-VQ4b5YFWmMMl6JPUz2dfcGiS&torrent_pass=4d47d8973df127cb1734c551f91753bc&usetoken=1"}, {"torrentId": 3535798, "media": "CD", "encoding": "Lossless", "remasterYear": 2026, "remasterTitle": "", "fileCount": 15, "size": 215916735, "downloadUrl": "https://orpheus.network/torrents.php?action=download&id=3535798&authkey=uSU3m-m-VQ4b5YFWmMMl6JPUz2dfcGiS&torrent_pass=4d47d8973df127cb1734c551f91753bc&usetoken=1"}];
-                    if (!window.embedData) window.embedData = {};
-                    window.embedData[1567647] = {
-                        youtube: "<iframe width=\"400\" height=\"160\" src=\"https://www.youtube.com/embed/j7HvxPmrd_E\" frameborder=\"0\" allow=\"autoplay; encrypted-media\" allowfullscreen></iframe>",
-                        bandcamp: ""
-                    };
-                </script>
-            
-                <div class="album" onclick="showTorrents(1568191, 'Pat Metheny', 'Side‐Eye III+', 2026, 2)" id="album-1568191">
-                    <button class="delete-btn" onclick="deleteAlbum(1568191, event)" title="Eliminar álbum">×</button>
-                    <img src="https://ptpimg.me/65s1gr.jpg" alt="Pat Metheny - Side‐Eye III+">
-                    <div class="album-artist">Pat Metheny</div>
-                    <div class="album-name">Side‐Eye III+</div>
-                    <div class="album-date">(2026) · 2 FLACs</div>
-                </div>
-            
-                <script>
-                    if (!window.torrentData) window.torrentData = {};
-                    window.torrentData[1568191] = [{"torrentId": 3534270, "media": "WEB", "encoding": "24bit Lossless", "remasterYear": 2026, "remasterTitle": "", "fileCount": 9, "size": 1203281796, "downloadUrl": "https://orpheus.network/torrents.php?action=download&id=3534270&authkey=uSU3m-m-VQ4b5YFWmMMl6JPUz2dfcGiS&torrent_pass=4d47d8973df127cb1734c551f91753bc&usetoken=1"}, {"torrentId": 3533301, "media": "WEB", "encoding": "Lossless", "remasterYear": 2026, "remasterTitle": "", "fileCount": 9, "size": 478426916, "downloadUrl": "https://orpheus.network/torrents.php?action=download&id=3533301&authkey=uSU3m-m-VQ4b5YFWmMMl6JPUz2dfcGiS&torrent_pass=4d47d8973df127cb1734c551f91753bc&usetoken=1"}];
-                    if (!window.embedData) window.embedData = {};
-                    window.embedData[1568191] = {
-                        youtube: "<iframe width=\"400\" height=\"160\" src=\"https://www.youtube.com/embed/eYieJk75nhA\" frameborder=\"0\" allow=\"autoplay; encrypted-media\" allowfullscreen></iframe>",
-                        bandcamp: ""
-                    };
-                </script>
-            
-                <div class="album" onclick="showTorrents(1575992, 'Avalon Emerson', 'Written into Changes', 2026, 2)" id="album-1575992">
-                    <button class="delete-btn" onclick="deleteAlbum(1575992, event)" title="Eliminar álbum">×</button>
-                    <img src="https://ptpimg.me/ov06zo.jpg" alt="Avalon Emerson - Written into Changes">
-                    <div class="album-artist">Avalon Emerson</div>
-                    <div class="album-name">Written into Changes</div>
-                    <div class="album-date">(2026) · 2 FLACs</div>
-                </div>
-            
-                <script>
-                    if (!window.torrentData) window.torrentData = {};
-                    window.torrentData[1575992] = [{"torrentId": 3554920, "media": "WEB", "encoding": "24bit Lossless", "remasterYear": 2026, "remasterTitle": "", "fileCount": 11, "size": 460047546, "downloadUrl": "https://orpheus.network/torrents.php?action=download&id=3554920&authkey=uSU3m-m-VQ4b5YFWmMMl6JPUz2dfcGiS&torrent_pass=4d47d8973df127cb1734c551f91753bc&usetoken=1"}, {"torrentId": 3554747, "media": "WEB", "encoding": "Lossless", "remasterYear": 2026, "remasterTitle": "", "fileCount": 11, "size": 262061922, "downloadUrl": "https://orpheus.network/torrents.php?action=download&id=3554747&authkey=uSU3m-m-VQ4b5YFWmMMl6JPUz2dfcGiS&torrent_pass=4d47d8973df127cb1734c551f91753bc&usetoken=1"}];
-                    if (!window.embedData) window.embedData = {};
-                    window.embedData[1575992] = {
-                        youtube: "<iframe width=\"400\" height=\"160\" src=\"https://www.youtube.com/embed/igdX7DodNWc\" frameborder=\"0\" allow=\"autoplay; encrypted-media\" allowfullscreen></iframe>",
-                        bandcamp: ""
-                    };
-                </script>
-            
-                <div class="album" onclick="showTorrents(1573077, 'Soft Machine', 'Thirteen', 2026, 2)" id="album-1573077">
-                    <button class="delete-btn" onclick="deleteAlbum(1573077, event)" title="Eliminar álbum">×</button>
-                    <img src="https://ptpimg.me/7o2f7x.jpg" alt="Soft Machine - Thirteen">
-                    <div class="album-artist">Soft Machine</div>
-                    <div class="album-name">Thirteen</div>
-                    <div class="album-date">(2026) · 2 FLACs</div>
-                </div>
-            
-                <script>
-                    if (!window.torrentData) window.torrentData = {};
-                    window.torrentData[1573077] = [{"torrentId": 3546832, "media": "WEB", "encoding": "24bit Lossless", "remasterYear": 2026, "remasterTitle": "", "fileCount": 14, "size": 746517946, "downloadUrl": "https://orpheus.network/torrents.php?action=download&id=3546832&authkey=uSU3m-m-VQ4b5YFWmMMl6JPUz2dfcGiS&torrent_pass=4d47d8973df127cb1734c551f91753bc&usetoken=1"}, {"torrentId": 3546730, "media": "WEB", "encoding": "Lossless", "remasterYear": 2026, "remasterTitle": "", "fileCount": 14, "size": 409127004, "downloadUrl": "https://orpheus.network/torrents.php?action=download&id=3546730&authkey=uSU3m-m-VQ4b5YFWmMMl6JPUz2dfcGiS&torrent_pass=4d47d8973df127cb1734c551f91753bc&usetoken=1"}];
-                    if (!window.embedData) window.embedData = {};
-                    window.embedData[1573077] = {
-                        youtube: "<iframe width=\"400\" height=\"160\" src=\"https://www.youtube.com/embed/Ycd299T6xec\" frameborder=\"0\" allow=\"autoplay; encrypted-media\" allowfullscreen></iframe>",
-                        bandcamp: ""
-                    };
-                </script>
-            
-                <div class="album" onclick="showTorrents(1555210, 'Robyn', 'Sexistential', 2026, 1)" id="album-1555210">
-                    <button class="delete-btn" onclick="deleteAlbum(1555210, event)" title="Eliminar álbum">×</button>
-                    <img src="https://static.qobuz.com/images/covers/g7/bk/by4uw41ddbkg7_org.jpg" alt="Robyn - Sexistential">
-                    <div class="album-artist">Robyn</div>
-                    <div class="album-name">Sexistential</div>
-                    <div class="album-date">(2026) · 1 FLAC</div>
-                </div>
-            
-                <script>
-                    if (!window.torrentData) window.torrentData = {};
-                    window.torrentData[1555210] = [{"torrentId": 3504573, "media": "WEB", "encoding": "Lossless", "remasterYear": 2026, "remasterTitle": "", "fileCount": 2, "size": 24704401, "downloadUrl": "https://orpheus.network/torrents.php?action=download&id=3504573&authkey=uSU3m-m-VQ4b5YFWmMMl6JPUz2dfcGiS&torrent_pass=4d47d8973df127cb1734c551f91753bc&usetoken=1"}];
-                    if (!window.embedData) window.embedData = {};
-                    window.embedData[1555210] = {
-                        youtube: "<iframe width=\"400\" height=\"160\" src=\"https://www.youtube.com/embed/OAezWNIUMDM\" frameborder=\"0\" allow=\"autoplay; encrypted-media\" allowfullscreen></iframe>",
-                        bandcamp: ""
-                    };
-                </script>
-            
-                <div class="album" onclick="showTorrents(1537081, 'Robyn', 'Sexistential', 2026, 2)" id="album-1537081">
-                    <button class="delete-btn" onclick="deleteAlbum(1537081, event)" title="Eliminar álbum">×</button>
-                    <img src="https://ptpimg.me/2321k6.jpg" alt="Robyn - Sexistential">
-                    <div class="album-artist">Robyn</div>
-                    <div class="album-name">Sexistential</div>
-                    <div class="album-date">(2026) · 2 FLACs</div>
-                </div>
-            
-                <script>
-                    if (!window.torrentData) window.torrentData = {};
-                    window.torrentData[1537081] = [{"torrentId": 3456905, "media": "WEB", "encoding": "24bit Lossless", "remasterYear": 2026, "remasterTitle": "", "fileCount": 3, "size": 126575301, "downloadUrl": "https://orpheus.network/torrents.php?action=download&id=3456905&authkey=uSU3m-m-VQ4b5YFWmMMl6JPUz2dfcGiS&torrent_pass=4d47d8973df127cb1734c551f91753bc&usetoken=1"}, {"torrentId": 3456907, "media": "WEB", "encoding": "Lossless", "remasterYear": 2026, "remasterTitle": "", "fileCount": 3, "size": 54361669, "downloadUrl": "https://orpheus.network/torrents.php?action=download&id=3456907&authkey=uSU3m-m-VQ4b5YFWmMMl6JPUz2dfcGiS&torrent_pass=4d47d8973df127cb1734c551f91753bc&usetoken=1"}];
-                    if (!window.embedData) window.embedData = {};
-                    window.embedData[1537081] = {
-                        youtube: "<iframe width=\"400\" height=\"160\" src=\"https://www.youtube.com/embed/OAezWNIUMDM\" frameborder=\"0\" allow=\"autoplay; encrypted-media\" allowfullscreen></iframe>",
-                        bandcamp: ""
-                    };
-                </script>
-            
+                    <p style="color:#7a8694;padding:20px">Cargando álbumes...</p>
                 </div>
             </div>
             <div class="sidebar" id="sidebar">
@@ -636,16 +368,69 @@
 
         <script>
             let currentSelected = null;
+            window.torrentData = {};
+            window.embedData = {};
 
             function showNotification(message, isError = false) {
                 const notification = document.getElementById('notification');
                 notification.textContent = message;
                 notification.className = 'notification show' + (isError ? ' error' : '');
-
-                setTimeout(() => {
-                    notification.classList.remove('show');
-                }, 3000);
+                setTimeout(() => { notification.classList.remove('show'); }, 3000);
             }
+
+            async function loadAlbums() {
+                const grid = document.querySelector('.albums-grid');
+                try {
+                    const response = await fetch('/api/albums');
+                    if (!response.ok) throw new Error('HTTP ' + response.status);
+                    const data = await response.json();
+
+                    window.torrentData = {};
+                    window.embedData = {};
+                    grid.innerHTML = '';
+
+                    for (const album of data) {
+                        for (const group of album.groups) {
+                            const groupId = group.groupId;
+                            window.torrentData[groupId] = group.torrents;
+                            window.embedData[groupId] = {
+                                youtube: album.youtube_embed || '',
+                                bandcamp: album.bandcamp_embed || ''
+                            };
+
+                            const years = (group.torrents || []).map(t => t.remasterYear).filter(Boolean);
+                            const oldestYear = years.length > 0 ? Math.min(...years) : 'Unknown';
+                            const flacCount = group.flacCount || 0;
+
+                            const type = album.type || 'vevent';
+                            const badgeHtml =
+                                type === 'top10'  ? '<span class="album-type-badge badge-top10">top10</span>' :
+                                type === 'manual' ? '<span class="album-type-badge badge-manual">manual</span>' : '';
+
+                            const div = document.createElement('div');
+                            div.className = 'album type-' + type;
+                            div.id = 'album-' + groupId;
+                            div.onclick = () => showTorrents(groupId, album.artist, album.album, oldestYear, flacCount);
+                            div.innerHTML =
+                                badgeHtml +
+                                '<button class="delete-btn" onclick="deleteAlbum(' + groupId + ', event)" title="Eliminar álbum">×</button>' +
+                                '<img src="' + (group.cover || '') + '" alt="' + album.artist + ' - ' + album.album + '">' +
+                                '<div class="album-artist">' + album.artist + '</div>' +
+                                '<div class="album-name">' + album.album + '</div>' +
+                                '<div class="album-date">(' + oldestYear + ') · ' + flacCount + ' FLAC' + (flacCount !== 1 ? 's' : '') + '</div>';
+                            grid.appendChild(div);
+                        }
+                    }
+
+                    if (grid.children.length === 0) {
+                        grid.innerHTML = '<p style="color:#7a8694;padding:20px">No hay álbumes pendientes.</p>';
+                    }
+                } catch (e) {
+                    grid.innerHTML = '<p style="color:#e74c3c;padding:20px">Error cargando álbumes: ' + e.message + '</p>';
+                }
+            }
+
+            document.addEventListener('DOMContentLoaded', loadAlbums);
 
             function showTorrents(groupId, artist, albumName, year, flacCount) {
                 // Actualizar selección visual
