@@ -66,8 +66,8 @@ def obtener_top_semana(limit: int) -> list[dict]:
     # La respuesta es una lista de secciones; nos interesa la primera (torrents)
     for section in data.get("response", []):
         for item in section.get("results", []):
-            artist = item.get("artist", "").strip()
-            album  = item.get("groupName", "").strip()
+            artist = (item.get("artist") or "").strip()
+            album  = (item.get("groupName") or "").strip()
             if artist and album:
                 entries.append({
                     "artist":  artist,
