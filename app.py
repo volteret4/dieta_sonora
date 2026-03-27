@@ -115,6 +115,18 @@ def regenerar_html():
         logger.error(f"Error regenerando HTML: {e}")
         return False
 
+def _read_csv_types() -> dict[tuple, str]:
+    """Devuelve {(artist_norm, album_norm): type} del CSV actual."""
+    types = {}
+    if not os.path.exists(CSV_FILE):
+        return types
+    with open(CSV_FILE, newline='', encoding='utf-8') as f:
+        for row in csv.DictReader(f):
+            key = (_normalize(row.get('artist', '')), _normalize(row.get('album', '')))
+            types[key] = row.get('type', 'vevent')
+    return types
+
+
 def eliminar_grupo_de_datos(group_id):
     group_id = str(group_id).strip()
     with open(DATA_JSON, "r", encoding="utf-8") as f:
@@ -131,14 +143,77 @@ def eliminar_grupo_de_datos(group_id):
     if found:
         with open(DATA_JSON, "w", encoding="utf-8") as f:
             json.dump(new_json_data, f, ensure_ascii=False, indent=2)
-        # Sincronizar CSV y HTML
-        rows = [{"artist": a["artist"], "album": a["album"]} for a in new_json_data if a["groups"]]
+        # Sincronizar CSV preservando columna type
+        existing_types = _read_csv_types()
+        rows = []
+        for a in new_json_data:
+            if a["groups"]:
+                key = (_normalize(a["artist"]), _normalize(a["album"]))
+                rows.append({"artist": a["artist"], "album": a["album"],
+                              "type": existing_types.get(key, "vevent")})
         with open(CSV_FILE, "w", newline='', encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=["artist", "album"])
+            writer = csv.DictWriter(f, fieldnames=["artist", "album", "type"])
             writer.writeheader()
             writer.writerows(rows)
         regenerar_html()
         return True
+    return False
+
+
+def delete_vtodo_in_radicale(artist: str, album: str) -> bool:
+    """Busca el VTODO de 'artist — album' en Radicale y lo elimina."""
+    if not RADICALE_URL or not CALENDAR_TASKS:
+        logger.warning('Radicale no configurado, no se puede eliminar VTODO')
+        return False
+
+    artist_n = _normalize(artist)
+    album_n  = _normalize(album)
+    url = f'{RADICALE_URL}{RADICALE_BASE}/{CALENDAR_TASKS}/'
+    body = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<C:calendar-query xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">'
+        '  <D:prop><D:getetag/><C:calendar-data/></D:prop>'
+        '  <C:filter><C:comp-filter name="VCALENDAR"/></C:filter>'
+        '</C:calendar-query>'
+    )
+    try:
+        r = requests.request('REPORT', url, data=body.encode('utf-8'),
+                             headers={'Depth': '1', 'Content-Type': 'application/xml; charset=utf-8'},
+                             auth=(RADICALE_USER, RADICALE_PW), timeout=30)
+        r.raise_for_status()
+    except Exception as e:
+        logger.error(f'Error obteniendo VTODOs: {e}')
+        return False
+
+    ns = {'D': 'DAV:', 'C': 'urn:ietf:params:xml:ns:caldav'}
+    root = ET.fromstring(r.content)
+    for resp in root.findall('.//D:response', ns):
+        href_el  = resp.find('D:href', ns)
+        cal_data = resp.find('.//C:calendar-data', ns)
+        if href_el is None or cal_data is None or not cal_data.text:
+            continue
+        try:
+            cal = Calendar.from_ical(cal_data.text)
+        except Exception:
+            continue
+        for comp in cal.walk():
+            if getattr(comp, 'name', '') != 'VTODO':
+                continue
+            a, b = _parse_summary(str(comp.get('SUMMARY', '')))
+            if _normalize(a) == artist_n and _normalize(b) == album_n:
+                filename = os.path.basename(href_el.text.rstrip('/'))
+                del_url = f'{RADICALE_URL}{RADICALE_BASE}/{CALENDAR_TASKS}/{filename}'
+                try:
+                    dr = requests.delete(del_url, auth=(RADICALE_USER, RADICALE_PW), timeout=15)
+                    if dr.status_code in (200, 204):
+                        logger.info(f'VTODO eliminado: {artist} — {album}')
+                        return True
+                    logger.error(f'Error al eliminar VTODO: HTTP {dr.status_code}')
+                except Exception as e:
+                    logger.error(f'Error al eliminar VTODO: {e}')
+                return False
+
+    logger.warning(f'VTODO no encontrado: {artist} — {album}')
     return False
 
 # -----------------------------------------------------------------------------
@@ -191,6 +266,26 @@ def index():
 @app.route('/discos_nuevos')
 def discos_nuevos():
     return send_file(HTML_OUTPUT) if os.path.exists(HTML_OUTPUT) else ("No encontrado", 404)
+
+@app.route('/api/delete', methods=['POST'])
+def delete_album():
+    data = request.json
+    group_id = data.get('groupId')
+    with open(DATA_JSON, 'r', encoding='utf-8') as f:
+        json_data = json.load(f)
+    artist, album = find_album_for_group(json_data, group_id)
+
+    if not eliminar_grupo_de_datos(group_id):
+        return jsonify({"error": "Álbum no encontrado"}), 404
+
+    msg = "Álbum eliminado correctamente"
+    if artist and album:
+        if delete_vtodo_in_radicale(artist, album):
+            msg += " (VTODO eliminado de Radicale)"
+        else:
+            msg += " (VTODO no encontrado en Radicale)"
+    return jsonify({"success": True, "message": msg})
+
 
 @app.route('/api/download', methods=['POST'])
 def download_torrent():
