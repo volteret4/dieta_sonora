@@ -62,18 +62,22 @@ def obtener_top_semana(limit: int) -> list[dict]:
         print(f"❌ API respondió error: {data.get('error')}")
         return []
 
+    seen_groups: set = set()
     entries = []
-    # La respuesta es una lista de secciones; nos interesa la primera (torrents)
     for section in data.get("response", []):
         for item in section.get("results", []):
-            artist = (item.get("artist") or "").strip()
-            album  = (item.get("groupName") or "").strip()
-            if artist and album:
+            if not isinstance(item, dict):
+                continue
+            artist   = (item.get("artist") or "").strip()
+            album    = (item.get("groupName") or "").strip()
+            group_id = item.get("groupID")
+            if artist and album and group_id and group_id not in seen_groups:
+                seen_groups.add(group_id)
                 entries.append({
                     "artist":  artist,
                     "album":   album,
-                    "groupId": item.get("groupId"),
-                    "cover":   item.get("cover", ""),
+                    "groupId": group_id,
+                    "cover":   item.get("wikiImage", ""),
                 })
     return entries
 
