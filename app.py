@@ -103,17 +103,13 @@ def find_album_for_group(json_data, group_id):
     return None, None
 
 def regenerar_html():
-    try:
-        with open(DATA_JSON, "r", encoding="utf-8") as f:
-            json_data = json.load(f)
-        json_data = enrich_with_embeds(json_data, cache_file=EMBED_CACHE)
-        html = generar_html(json_data)
-        with open(HTML_OUTPUT, "w", encoding="utf-8") as f:
-            f.write(html)
-        return True
-    except Exception as e:
-        logger.error(f"Error regenerando HTML: {e}")
-        return False
+    """Regenera el HTML desde DATA_JSON. Lanza excepción si falla."""
+    with open(DATA_JSON, "r", encoding="utf-8") as f:
+        json_data = json.load(f)
+    json_data = enrich_with_embeds(json_data, cache_file=EMBED_CACHE)
+    html = generar_html(json_data)
+    with open(HTML_OUTPUT, "w", encoding="utf-8") as f:
+        f.write(html)
 
 def _read_csv_types() -> dict[tuple, str]:
     """Devuelve {(artist_norm, album_norm): type} del CSV actual."""
@@ -155,7 +151,6 @@ def eliminar_grupo_de_datos(group_id):
             writer = csv.DictWriter(f, fieldnames=["artist", "album", "type"])
             writer.writeheader()
             writer.writerows(rows)
-        regenerar_html()
         return True
     return False
 
@@ -277,6 +272,12 @@ def delete_album():
 
     if not eliminar_grupo_de_datos(group_id):
         return jsonify({"error": "Álbum no encontrado"}), 404
+
+    try:
+        regenerar_html()
+    except Exception as e:
+        logger.error(f"Error regenerando HTML: {e}")
+        return jsonify({"error": f"Álbum eliminado del JSON pero error regenerando HTML: {e}"}), 500
 
     msg = "Álbum eliminado correctamente"
     if artist and album:
