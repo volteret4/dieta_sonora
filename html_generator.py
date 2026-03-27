@@ -236,7 +236,7 @@ def generar_html(json_data=None):
                 width: 100%;
             }
             .albums-container {
-                width: 80%;
+                width: 70%;
                 height: 100vh;
                 overflow-y: auto;
                 padding: 20px;
@@ -288,6 +288,26 @@ def generar_html(json_data=None):
                 color: #7a8694;
                 margin-top: 5px;
             }
+            .album-type-badge {
+                position: absolute;
+                top: 10px;
+                left: 10px;
+                font-size: 10px;
+                font-weight: 700;
+                padding: 2px 6px;
+                border-radius: 4px;
+                letter-spacing: 0.5px;
+                text-transform: uppercase;
+                opacity: 0.85;
+            }
+            .badge-top10 { background: #f39c12; color: #0a0e27; }
+            .badge-manual { background: #8e44ad; color: #fff; }
+
+            .album.type-top10 { border-color: #f39c12; }
+            .album.type-top10:hover { border-color: #f39c12; box-shadow: 0 6px 12px rgba(243,156,18,0.35); }
+            .album.type-manual { border-color: #8e44ad; }
+            .album.type-manual:hover { border-color: #8e44ad; box-shadow: 0 6px 12px rgba(142,68,173,0.35); }
+
             .delete-btn {
                 position: absolute;
                 top: 10px;
@@ -315,7 +335,7 @@ def generar_html(json_data=None):
                 background: #c0392b;
             }
             .sidebar {
-                width: 20%;
+                width: 30%;
                 height: 100vh;
                 background-color: #16213e;
                 border-left: 2px solid #1f2d4a;
@@ -549,11 +569,6 @@ def generar_html(json_data=None):
                     <p style="color:#7a8694;padding:20px">Cargando álbumes...</p>
                 </div>
             </div>
-    """
-
-    html += """
-                </div>
-            </div>
             <div class="sidebar" id="sidebar">
                 <div class="sidebar-placeholder">
                     Selecciona un álbum para ver los torrents disponibles
@@ -599,11 +614,17 @@ def generar_html(json_data=None):
                             const oldestYear = years.length > 0 ? Math.min(...years) : 'Unknown';
                             const flacCount = group.flacCount || 0;
 
+                            const type = album.type || 'vevent';
+                            const badgeHtml =
+                                type === 'top10'  ? '<span class="album-type-badge badge-top10">top10</span>' :
+                                type === 'manual' ? '<span class="album-type-badge badge-manual">manual</span>' : '';
+
                             const div = document.createElement('div');
-                            div.className = 'album';
+                            div.className = 'album type-' + type;
                             div.id = 'album-' + groupId;
                             div.onclick = () => showTorrents(groupId, album.artist, album.album, oldestYear, flacCount);
                             div.innerHTML =
+                                badgeHtml +
                                 '<button class="delete-btn" onclick="deleteAlbum(' + groupId + ', event)" title="Eliminar álbum">×</button>' +
                                 '<img src="' + (group.cover || '') + '" alt="' + album.artist + ' - ' + album.album + '">' +
                                 '<div class="album-artist">' + album.artist + '</div>' +
