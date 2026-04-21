@@ -9,11 +9,11 @@ LINEAS_ANTES=$(wc -l < "$CSV_FILE")
 CHECKSUM_ANTES=$(md5sum "$CSV_FILE" | awk '{print $1}')
 
 # comprueba calendario hoy
-"$PYTHON" revisor_calendario.py --since 7
+"$PYTHON" revisor_calendario.py --since 21
 
 # añade top 10 orpheus
 "$PYTHON" top_10.py
-# elimina los albumes que tienes
+# elimina los albumes que tienes en airsonic
 "$PYTHON" airsonic_clean_csv.py --mode clean albums.csv
 
 # elimina los albumes en qbitorrent
@@ -46,7 +46,7 @@ if [ "$CHECKSUM_ANTES" != "$CHECKSUM_DESPUES" ]; then
 
     # renombrar html
     mv resumen_flacs.html index.html
-
+    
 else
     echo "CSV sin cambios - no hay álbumes que eliminar"
 fi

@@ -985,6 +985,17 @@ def upsert_album(conn: sqlite3.Connection,
                 )
             )
 
+def get_release_from_db(conn: sqlite3.Connection, artist: str, album: str) -> Optional[str]:
+    """Consulta si el álbum ya tiene una fecha de lanzamiento registrada en la DB."""
+    artist_key = _normalize(artist)
+    album_key  = _normalize(album)
+    row = conn.execute(
+        """SELECT release_date FROM albums a
+           JOIN artists art ON a.artist_id = art.artist_id
+           WHERE art.name_normalized = ? AND a.name_normalized = ?""",
+        (artist_key, album_key)
+    ).fetchone()
+    return row[0] if row and row[0] else None
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  MAIN
@@ -1108,8 +1119,15 @@ def main():
         ev           = events_all.get(key)
         release_date = ev["release_date"] if ev else None
 
+        # Si no está en el calendario, miramos si ya lo guardamos en nuestra DB antes
         if release_date is None:
-            print(f"\n  🎸 {artist} — {album}  (sin VEVENT, buscando en MusicBrainz...)")
+            release_date = get_release_from_db(music_conn, artist, album)
+            if release_date:
+                print(f"    ℹ️ Fecha recuperada de music_stats.db: {release_date}")
+
+        # Si sigue siendo None, buscamos fuera
+        if release_date is None:
+            print(f"\n  🎸 {artist} — {album}  (sin VEVENT ni registro previo, buscando en MusicBrainz...)")
             release_date = get_release_date_from_mb(artist, album)
             if release_date:
                 print(f"    📅 MusicBrainz: lanzamiento el {release_date}")
