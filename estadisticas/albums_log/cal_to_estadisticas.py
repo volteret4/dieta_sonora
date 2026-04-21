@@ -711,21 +711,55 @@ def mb_get(endpoint: str, params: dict, _attempt: int = 0) -> Optional[dict]:
     return r.json()
 
 
+def _pick_best_release(releases: list[dict], artist: str) -> Optional[dict]:
+    """
+    De una lista de releases MB, elige el más relevante:
+    primero score=100 del artista correcto, luego cualquier score=100,
+    luego el primero con artista correcto, luego el primero.
+    """
+    artist_n = _normalize(artist)
+
+    def matches_artist(r: dict) -> bool:
+        return any(
+            _normalize(ac.get("artist", {}).get("name", "")) == artist_n
+            for ac in r.get("artist-credit", [])
+            if isinstance(ac, dict)
+        )
+
+    for candidate in [
+        next((r for r in releases if str(r.get("score", 0)) == "100" and matches_artist(r)), None),
+        next((r for r in releases if str(r.get("score", 0)) == "100"), None),
+        next((r for r in releases if matches_artist(r)), None),
+        releases[0] if releases else None,
+    ]:
+        if candidate:
+            return candidate
+    return None
+
+
 def get_tracklist(artist: str, album: str) -> list[str]:
     """Retorna lista de títulos normalizados de las pistas del álbum, o []."""
     a_q = _mb_escape(artist)
     b_q = _mb_escape(album)
 
-    data = mb_get("release", {"query": f'artist:"{a_q}" AND release:"{b_q}"', "limit": 3})
-    if not data or not data.get("releases"):
-        data = mb_get("release", {"query": f'release:"{b_q}" AND artist:"{a_q}"', "limit": 5})
+    releases = None
+    for query in [
+        f'artist:"{a_q}" AND release:"{b_q}"',
+        f'release:"{b_q}" AND artist:"{a_q}"',
+        f'release:"{b_q}"',
+    ]:
+        data = mb_get("release", {"query": query, "limit": 5})
+        if data and data.get("releases"):
+            releases = data["releases"]
+            break
 
-    if not data or not data.get("releases"):
+    if not releases:
         print(f"    ℹ️  MusicBrainz: no encontrado '{artist} — {album}'")
         return []
 
-    releases = data["releases"]
-    best = next((r for r in releases if str(r.get("score", 0)) == "100"), releases[0])
+    best = _pick_best_release(releases, artist)
+    if not best:
+        return []
     mbid = best.get("id")
     if not mbid:
         return []
@@ -745,35 +779,78 @@ def get_tracklist(artist: str, album: str) -> list[str]:
     return tracks
 
 
+def _complete_partial_date(raw: str) -> str:
+    """
+    Completa fechas parciales de MusicBrainz:
+      YYYY       → YYYY-12-31  (fin de año, no comienzo)
+      YYYY-MM    → YYYY-MM-<último día del mes>
+      YYYY-MM-DD → sin cambios
+    """
+    import calendar as _cal
+    parts = raw.split("-")
+    if len(parts) == 1:
+        return f"{parts[0]}-12-31"
+    if len(parts) == 2:
+        try:
+            year, month = int(parts[0]), int(parts[1])
+            last_day = _cal.monthrange(year, month)[1]
+            return f"{parts[0]}-{parts[1]}-{last_day:02d}"
+        except ValueError:
+            return raw
+    return raw
+
+
 def get_release_date_from_mb(artist: str, album: str) -> Optional[str]:
     """
     Busca la fecha de lanzamiento en MusicBrainz.
-    Retorna fecha ISO (YYYY-MM-DD) o None si no la encuentra.
-    Fechas parciales (YYYY o YYYY-MM) se completan con -01.
+    Estrategia (orden de prioridad):
+      1. release-group con artist + releasegroup → first-release-date (fecha canónica)
+      2. release con artist + release (varias variantes de query)
+    Fechas parciales: YYYY → YYYY-12-31, YYYY-MM → YYYY-MM-<último día del mes>.
     """
     a_q = _mb_escape(artist)
     b_q = _mb_escape(album)
 
-    data = mb_get("release", {"query": f'artist:"{a_q}" AND release:"{b_q}"', "limit": 5})
-    if not data or not data.get("releases"):
-        data = mb_get("release", {"query": f'release:"{b_q}" AND artist:"{a_q}"', "limit": 5})
+    # 1. release-group: first-release-date es la fecha más fiable y canónica
+    for rg_query in [
+        f'artist:"{a_q}" AND releasegroup:"{b_q}"',
+        f'releasegroup:"{b_q}" AND artist:"{a_q}"',
+    ]:
+        data = mb_get("release-group", {"query": rg_query, "limit": 5})
+        if not data or not data.get("release-groups"):
+            continue
+        rgs = data["release-groups"]
+        best = next((r for r in rgs if str(r.get("score", 0)) == "100"), rgs[0])
+        raw = best.get("first-release-date", "").strip()
+        if raw:
+            return _complete_partial_date(raw)
 
-    if not data or not data.get("releases"):
-        return None
+    # 2. release: fallback con varias variantes de búsqueda
+    for rel_query in [
+        f'artist:"{a_q}" AND release:"{b_q}"',
+        f'release:"{b_q}" AND artist:"{a_q}"',
+        f'release:"{b_q}"',
+    ]:
+        data = mb_get("release", {"query": rel_query, "limit": 5})
+        if not data or not data.get("releases"):
+            continue
+        releases = data["releases"]
+        # Si la query no filtra por artista, descartar resultados de otro artista
+        if f'artist:' not in rel_query:
+            releases = [
+                r for r in releases
+                if any(
+                    _normalize(ac.get("artist", {}).get("name", "")) == _normalize(artist)
+                    for ac in r.get("artist-credit", [])
+                    if isinstance(ac, dict)
+                )
+            ] or releases  # si no queda nada, usar todos
+        best = next((r for r in releases if str(r.get("score", 0)) == "100"), releases[0])
+        raw = best.get("date", "").strip()
+        if raw:
+            return _complete_partial_date(raw)
 
-    releases = data["releases"]
-    best = next((r for r in releases if str(r.get("score", 0)) == "100"), releases[0])
-
-    raw = best.get("date", "").strip()
-    if not raw:
-        return None
-
-    parts = raw.split("-")
-    if len(parts) == 1:
-        return f"{parts[0]}-01-01"
-    if len(parts) == 2:
-        return f"{parts[0]}-{parts[1]}-01"
-    return raw
+    return None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1024,6 +1101,10 @@ def main():
         "--manual-tasks", action="store_true",
         help="Detecta VTODOs sin VEVENT (compras manuales) y los añade al albums.csv con type=manual"
     )
+    parser.add_argument(
+        "--auto", action="store_true",
+        help="Modo no interactivo: omite álbumes sin fecha de lanzamiento (no pregunta al usuario)"
+    )
     args = parser.parse_args()
 
     if args.all_data:
@@ -1131,6 +1212,9 @@ def main():
             release_date = get_release_date_from_mb(artist, album)
             if release_date:
                 print(f"    📅 MusicBrainz: lanzamiento el {release_date}")
+            elif args.auto:
+                print(f"    ❓ No encontrado en MusicBrainz — omitido (--auto)")
+                continue
             else:
                 print(f"    ❓ No encontrado en MusicBrainz")
                 user_input = input(
