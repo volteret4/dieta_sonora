@@ -21,7 +21,7 @@ from xml.etree import ElementTree as ET
 
 import requests
 from icalendar import Calendar
-from tools.sops_env import load_sops_env
+from sopsdotenv import load_sops_env
 
 load_sops_env()
 
