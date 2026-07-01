@@ -268,6 +268,14 @@ def run_tts_conversion():
 def index():
     return send_file('index.html')
 
+@app.route('/theme-palettes.css')
+def theme_palettes_css():
+    return send_from_directory(APP_DIR, 'theme-palettes.css')
+
+@app.route('/theme-picker.js')
+def theme_picker_js():
+    return send_from_directory(APP_DIR, 'theme-picker.js')
+
 @app.route('/discos_nuevos')
 def discos_nuevos():
     return send_file(HTML_OUTPUT) if os.path.exists(HTML_OUTPUT) else ("No encontrado", 404)
