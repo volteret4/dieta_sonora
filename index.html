@@ -295,6 +295,96 @@
                 display: block;
             }
 
+            /* Info Last.fm / MusicBrainz en sidebar (debajo del video) */
+            .lastfm-section {
+                margin-top: 18px;
+                padding-top: 14px;
+                border-top: 2px solid #1f2d4a;
+            }
+            .lastfm-section h4 {
+                font-size: 12px;
+                color: #35bf88;
+                margin-bottom: 10px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+            .lastfm-loading {
+                color: #7a8694;
+                font-size: 12px;
+                display: flex;
+                align-items: center;
+                gap: 4px;
+            }
+            .lastfm-empty {
+                color: #7a8694;
+                font-size: 12px;
+                font-style: italic;
+            }
+            .lastfm-meta {
+                font-size: 11px;
+                color: #7a8694;
+                margin-bottom: 10px;
+            }
+            .lastfm-bio {
+                font-size: 12px;
+                line-height: 1.5;
+                color: #b0b8c9;
+                margin-bottom: 12px;
+            }
+            .lastfm-bio a {
+                color: #35bf88;
+                white-space: nowrap;
+            }
+            .lastfm-stats {
+                display: flex;
+                gap: 16px;
+                margin-bottom: 12px;
+                flex-wrap: wrap;
+            }
+            .lastfm-stat strong {
+                display: block;
+                font-size: 14px;
+                color: #ffffff;
+            }
+            .lastfm-stat {
+                font-size: 10px;
+                color: #7a8694;
+            }
+            .lastfm-tags {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 6px;
+                margin-bottom: 12px;
+            }
+            .lastfm-tag {
+                background: #1f2d4a;
+                color: #b0b8c9;
+                font-size: 10px;
+                padding: 3px 8px;
+                border-radius: 10px;
+            }
+            .lastfm-similar-label {
+                font-size: 10px;
+                color: #7a8694;
+                margin-bottom: 6px;
+            }
+            .lastfm-similar {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 6px;
+            }
+            .lastfm-similar a {
+                font-size: 11px;
+                color: #35bf88;
+                text-decoration: none;
+                background: rgba(53, 191, 136, 0.1);
+                padding: 3px 8px;
+                border-radius: 10px;
+            }
+            .lastfm-similar a:hover {
+                background: rgba(53, 191, 136, 0.25);
+            }
+
             /* Loader */
             .loader {
                 border: 3px solid #1f2d4a;
@@ -515,7 +605,109 @@
                     tableHtml += '</div>';
                 }
 
+                // Placeholder de info de Last.fm/MusicBrainz — se rellena bajo demanda
+                tableHtml += `
+                    <div class="lastfm-section" id="lastfm-section">
+                        <h4>📻 Sobre el artista / álbum</h4>
+                        <div class="lastfm-loading"><span class="loader"></span> Cargando información…</div>
+                    </div>
+                `;
+
                 sidebar.innerHTML = tableHtml;
+
+                fetchLastfmInfo(artist, albumName, groupId);
+            }
+
+            function escapeHtml(str) {
+                const div = document.createElement('div');
+                div.textContent = str == null ? '' : String(str);
+                return div.innerHTML;
+            }
+
+            async function fetchLastfmInfo(artist, albumName, groupId) {
+                try {
+                    const params = new URLSearchParams({ artist, album: albumName });
+                    const response = await fetch('/api/lastfm_info?' + params.toString());
+
+                    // Si el usuario ya cambió de álbum mientras esperábamos, no pisar el sidebar
+                    if (currentSelected !== groupId) return;
+
+                    const section = document.getElementById('lastfm-section');
+                    if (!section) return;
+
+                    if (!response.ok) {
+                        section.innerHTML = '<h4>📻 Sobre el artista / álbum</h4><div class="lastfm-empty">No se pudo obtener información.</div>';
+                        return;
+                    }
+
+                    const data = await response.json();
+                    renderLastfmInfo(section, data);
+                } catch (error) {
+                    if (currentSelected !== groupId) return;
+                    const section = document.getElementById('lastfm-section');
+                    if (section) {
+                        section.innerHTML = '<h4>📻 Sobre el artista / álbum</h4><div class="lastfm-empty">Error al cargar información.</div>';
+                    }
+                }
+            }
+
+            function renderLastfmInfo(section, data) {
+                const artistInfo = data.artist || {};
+                const albumInfo = data.album || {};
+                const similar = data.similar || [];
+                const sources = data.sources || {};
+
+                if (!sources.lastfm && !sources.musicbrainz) {
+                    section.innerHTML = '<h4>📻 Sobre el artista / álbum</h4><div class="lastfm-empty">Sin información disponible.</div>';
+                    return;
+                }
+
+                let html = '<h4>📻 Sobre el artista / álbum</h4>';
+
+                // Metadatos de lanzamiento (MusicBrainz)
+                const metaParts = [];
+                if (albumInfo.release_date) metaParts.push(albumInfo.release_date);
+                if (albumInfo.label) metaParts.push(albumInfo.label);
+                if (albumInfo.country) metaParts.push(albumInfo.country);
+                if (metaParts.length) {
+                    html += `<div class="lastfm-meta">${escapeHtml(metaParts.join(' · '))}</div>`;
+                }
+
+                // Bio del artista
+                if (artistInfo.bio_summary) {
+                    const bioUrl = artistInfo.url || '#';
+                    html += `<div class="lastfm-bio">${escapeHtml(artistInfo.bio_summary)} `
+                        + `<a href="${encodeURI(bioUrl)}" target="_blank" rel="noopener">Leer más en Last.fm →</a></div>`;
+                }
+
+                // Oyentes / reproducciones
+                const stats = [];
+                if (albumInfo.listeners) stats.push({ label: 'Oyentes (álbum)', value: albumInfo.listeners });
+                if (albumInfo.playcount) stats.push({ label: 'Reproducciones (álbum)', value: albumInfo.playcount });
+                if (artistInfo.listeners) stats.push({ label: 'Oyentes (artista)', value: artistInfo.listeners });
+                if (stats.length) {
+                    html += '<div class="lastfm-stats">' + stats.map(s =>
+                        `<div class="lastfm-stat"><strong>${s.value.toLocaleString('es')}</strong>${escapeHtml(s.label)}</div>`
+                    ).join('') + '</div>';
+                }
+
+                // Tags/géneros
+                const tags = [...new Set([...(albumInfo.tags || []), ...(artistInfo.tags || [])])].slice(0, 8);
+                if (tags.length) {
+                    html += '<div class="lastfm-tags">' + tags.map(t =>
+                        `<span class="lastfm-tag">${escapeHtml(t)}</span>`
+                    ).join('') + '</div>';
+                }
+
+                // Artistas similares
+                if (similar.length) {
+                    html += '<div class="lastfm-similar-label">Artistas similares</div>';
+                    html += '<div class="lastfm-similar">' + similar.map(s =>
+                        `<a href="${encodeURI(s.url || '#')}" target="_blank" rel="noopener">${escapeHtml(s.name)}</a>`
+                    ).join('') + '</div>';
+                }
+
+                section.innerHTML = html;
             }
 
             async function downloadTorrent(downloadUrl, groupId, torrentId) {
