@@ -10,6 +10,7 @@
             href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@300;400;600&display=swap"
             rel="stylesheet"
         />
+        <link rel="stylesheet" href="/theme-palettes.css" />
         <style>
             *,
             *::before,
@@ -19,18 +20,30 @@
                 padding: 0;
             }
 
-            :root {
+            :root,
+            [data-theme="og"] {
                 --bg: #0c0c0e;
-                --bg2: #131316;
-                --bg3: #1a1a1f;
-                --gold: #c8a84b;
-                --gold-dim: #7a6125;
-                --text: #e4ddd0;
-                --text-dim: #7a7570;
+                --surface: #131316;
+                --surface-2: #1a1a1f;
                 --border: #2a2a30;
-                --red: #c05050;
+                --text: #e4ddd0;
+                --text-muted: #7a7570;
+                --accent: #c8a84b;
+                --accent-2: #8a6eaf;
+                --success: #4caf50;
+                --warning: #ff9800;
+                --danger: #c05050;
+            }
+
+            :root {
+                --bg2: var(--surface);
+                --bg3: var(--surface-2);
+                --gold: var(--accent);
+                --gold-dim: #7a6125;
+                --text-dim: var(--text-muted);
+                --red: var(--danger);
                 --teal: #4a9e8e;
-                --purple: #8a6eaf;
+                --purple: var(--accent-2);
                 --font-serif: "Playfair Display", Georgia, serif;
                 --font-mono: "JetBrains Mono", "Courier New", monospace;
             }
@@ -59,7 +72,7 @@
                 gap: 20px;
                 background: linear-gradient(
                     180deg,
-                    #161619 0%,
+                    var(--surface) 0%,
                     transparent 100%
                 );
             }
@@ -208,7 +221,7 @@
                 color: var(--gold);
                 letter-spacing: 0.1em;
                 text-transform: uppercase;
-                background: #1e1a0e;
+                background: var(--surface-2);
                 border: 1px solid var(--gold-dim);
                 padding: 2px 8px;
                 border-radius: 2px;
@@ -283,7 +296,7 @@
                 color: var(--gold);
             }
             tbody tr {
-                border-bottom: 1px solid #1e1e24;
+                border-bottom: 1px solid var(--border);
                 transition: background 0.1s;
             }
             tbody tr:hover {
@@ -318,14 +331,14 @@
                 font-weight: 400;
             }
             .badge-ok {
-                background: #122a20;
-                color: #4caf50;
-                border: 1px solid #1f4a30;
+                background: var(--surface-2);
+                color: var(--success);
+                border: 1px solid var(--success);
             }
             .badge-warn {
-                background: #2a1a00;
-                color: #ff9800;
-                border: 1px solid #4a3000;
+                background: var(--surface-2);
+                color: var(--warning);
+                border: 1px solid var(--warning);
             }
             .badge-na {
                 background: var(--bg3);
@@ -378,7 +391,7 @@
                 outline: none;
             }
             .custom-tooltip {
-                background: #1c1c22;
+                background: var(--surface-2);
                 border: 1px solid var(--border);
                 padding: 10px 14px;
                 font-family: var(--font-mono);
@@ -1201,5 +1214,6 @@
                 );
             });
         </script>
+        <script src="/theme-picker.js"></script>
     </body>
 </html>
