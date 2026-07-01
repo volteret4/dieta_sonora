@@ -1,5 +1,7 @@
 import csv
 import os
+import re
+import unicodedata
 import argparse
 from qbittorrentapi import Client
 from tools.sops_env import load_sops_env
@@ -12,6 +14,22 @@ QB_PORT = os.getenv("QB_PORT", "8080")
 QB_USER = os.getenv("QB_USER", "admin")
 QB_PASS = os.getenv("QB_PASS", "adminadmin")
 
+
+def _norm(s: str) -> str:
+    """Normaliza para comparación: minúsculas, sin acentos, separadores → espacio."""
+    s = unicodedata.normalize('NFD', s)
+    s = ''.join(c for c in s if unicodedata.category(c) != 'Mn')
+    s = s.lower()
+    s = re.sub(r'[_\-\.]+', ' ', s)
+    s = re.sub(r'\s+', ' ', s).strip()
+    return s
+
+
+def _album_in_torrent(artist: str, album: str, t_name: str) -> bool:
+    na, nb, nt = _norm(artist), _norm(album), _norm(t_name)
+    return na in nt and nb in nt
+
+
 def check_albums_in_qb(clean_mode=False):
     qbt_client = Client(host=QB_HOST, port=QB_PORT, username=QB_USER, password=QB_PASS)
 
@@ -22,6 +40,7 @@ def check_albums_in_qb(clean_mode=False):
         return
 
     torrents = qbt_client.torrents_info()
+    torrent_names = [t.name for t in torrents]
 
     albums_restantes = []
     csv_filename = 'albums.csv'
@@ -35,23 +54,17 @@ def check_albums_in_qb(clean_mode=False):
         fieldnames = reader.fieldnames
 
         for row in reader:
-            artist = row['artist'].strip().lower()
-            album = row['album'].strip().lower()
+            artist = row['artist'].strip()
+            album = row['album'].strip()
 
-            found = False
-            for t in torrents:
-                t_name = t.name.lower()
-                if artist in t_name and album in t_name:
-                    found = True
-                    break
+            found = any(_album_in_torrent(artist, album, t) for t in torrent_names)
 
             if found:
-                print(f"[ENCONTRADO - ELIMINANDO] {row['artist']} - {row['album']}")
+                print(f"[ENCONTRADO - ELIMINANDO] {artist} - {album}")
             else:
-                # Si NO está, lo mantenemos en nuestra lista de "pendientes"
                 albums_restantes.append(row)
                 if not clean_mode:
-                    print(f"[FALTA] {row['artist']} - {row['album']}")
+                    print(f"[FALTA] {artist} - {album}")
 
     # Si se activó --clean, sobreescribimos el archivo con lo que NO se encontró
     if clean_mode:
