@@ -1,4 +1,5 @@
 import os
+import sys
 import re
 import shutil
 import glob
@@ -308,6 +309,54 @@ def download_torrent():
     if res.returncode == 0 and eliminar_grupo_de_datos(group_id):
         return jsonify({"success": True, "message": "Descargado y actualizado"})
     return jsonify({"error": "Error en proceso"}), 500
+
+
+@app.route('/api/airsonic', methods=['POST'])
+def actualizar_airsonic():
+    try:
+        r = requests.get(AIRSONIC_URL, timeout=15)
+        r.raise_for_status()
+        return jsonify({"success": True, "message": "Escaneo de Airsonic iniciado"})
+    except Exception as e:
+        logger.error(f"Error actualizando Airsonic: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/calendario', methods=['POST'])
+def revisar_calendario():
+    try:
+        res = subprocess.run(
+            ['bash', SCRIPT_CALENDARIO],
+            capture_output=True, text=True, timeout=120
+        )
+        if res.returncode != 0:
+            logger.error(f"main.sh stderr: {res.stderr}")
+            return jsonify({"error": res.stderr or "Error ejecutando el script"}), 500
+        return jsonify({"success": True, "message": "Calendario revisado y web actualizada"})
+    except subprocess.TimeoutExpired:
+        return jsonify({"error": "El script tardó demasiado (>120s)"}), 500
+    except Exception as e:
+        logger.error(f"Error revisando calendario: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/escuchados', methods=['POST'])
+def discos_escuchados():
+    try:
+        res = subprocess.run(
+            [sys.executable, SCRIPT_ESCUCHADOS],
+            capture_output=True, text=True, timeout=60
+        )
+        if res.returncode != 0:
+            logger.error(f"discos_escuchados stderr: {res.stderr}")
+            return jsonify({"error": res.stderr or "Error ejecutando el script"}), 500
+        return jsonify({"success": True, "message": "Discos escuchados procesados"})
+    except subprocess.TimeoutExpired:
+        return jsonify({"error": "El script tardó demasiado (>60s)"}), 500
+    except Exception as e:
+        logger.error(f"Error en discos_escuchados: {e}")
+        return jsonify({"error": str(e)}), 500
+
 
 # -----------------------------------------------------------------------------
 # RUTAS DE LA API (TTS / PODCAST)
