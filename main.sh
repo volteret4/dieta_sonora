@@ -17,7 +17,7 @@ CHECKSUM_ANTES=$(md5sum "$CSV_FILE" | awk '{print $1}')
 "$PYTHON" revisor_calendario.py --since 21
 
 # añade top 10 orpheus
-"$PYTHON" top_10.py
+"$PYTHON" top_semana.py
 # elimina los albumes que tienes en airsonic
 "$PYTHON" airsonic_clean_csv.py --mode clean albums.csv
 
