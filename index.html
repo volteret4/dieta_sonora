@@ -330,10 +330,73 @@
                 line-height: 1.5;
                 color: #b0b8c9;
                 margin-bottom: 12px;
+                max-height: 220px;
+                overflow-y: auto;
+                white-space: pre-line;
             }
             .lastfm-bio a {
                 color: #35bf88;
                 white-space: nowrap;
+            }
+            .lastfm-subtitle {
+                font-size: 10px;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                color: #7a8694;
+                margin: 14px 0 6px;
+            }
+            .lastfm-tracks {
+                list-style: none;
+                display: flex;
+                flex-direction: column;
+                gap: 3px;
+                margin-bottom: 12px;
+                font-size: 11px;
+            }
+            .lastfm-track {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                color: #b0b8c9;
+                padding: 2px 0;
+            }
+            .lastfm-track-rank {
+                color: #7a8694;
+                width: 18px;
+                text-align: right;
+                flex-shrink: 0;
+            }
+            .lastfm-track-name {
+                flex: 1;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .lastfm-track-duration {
+                color: #7a8694;
+                flex-shrink: 0;
+            }
+            .lastfm-discography {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 6px;
+                margin-bottom: 12px;
+            }
+            .lastfm-discography a {
+                font-size: 11px;
+                color: #b0b8c9;
+                text-decoration: none;
+                background: #1f2d4a;
+                padding: 3px 8px;
+                border-radius: 10px;
+            }
+            .lastfm-discography a:hover {
+                background: #2d3e5f;
+                color: #ffffff;
+            }
+            .lastfm-discography a .year {
+                color: #35bf88;
+                margin-right: 4px;
             }
             .lastfm-stats {
                 display: flex;
@@ -362,11 +425,6 @@
                 font-size: 10px;
                 padding: 3px 8px;
                 border-radius: 10px;
-            }
-            .lastfm-similar-label {
-                font-size: 10px;
-                color: #7a8694;
-                margin-bottom: 6px;
             }
             .lastfm-similar {
                 display: flex;
@@ -651,10 +709,18 @@
                 }
             }
 
+            function fmtTrackDuration(seconds) {
+                if (!seconds) return '';
+                const m = Math.floor(seconds / 60);
+                const s = seconds % 60;
+                return `${m}:${String(s).padStart(2, '0')}`;
+            }
+
             function renderLastfmInfo(section, data) {
                 const artistInfo = data.artist || {};
                 const albumInfo = data.album || {};
                 const similar = data.similar || [];
+                const discography = data.discography || [];
                 const sources = data.sources || {};
 
                 if (!sources.lastfm && !sources.musicbrainz) {
@@ -673,11 +739,11 @@
                     html += `<div class="lastfm-meta">${escapeHtml(metaParts.join(' · '))}</div>`;
                 }
 
-                // Bio del artista
-                if (artistInfo.bio_summary) {
+                // Bio completa del artista
+                if (artistInfo.bio) {
                     const bioUrl = artistInfo.url || '#';
-                    html += `<div class="lastfm-bio">${escapeHtml(artistInfo.bio_summary)} `
-                        + `<a href="${encodeURI(bioUrl)}" target="_blank" rel="noopener">Leer más en Last.fm →</a></div>`;
+                    html += `<div class="lastfm-bio">${escapeHtml(artistInfo.bio)} `
+                        + `<a href="${encodeURI(bioUrl)}" target="_blank" rel="noopener">Ver en Last.fm →</a></div>`;
                 }
 
                 // Oyentes / reproducciones
@@ -699,9 +765,30 @@
                     ).join('') + '</div>';
                 }
 
+                // Canciones del álbum
+                if (albumInfo.tracks && albumInfo.tracks.length) {
+                    html += '<div class="lastfm-subtitle">Canciones</div>';
+                    html += '<ul class="lastfm-tracks">' + albumInfo.tracks.map(t => `
+                        <li class="lastfm-track">
+                            <span class="lastfm-track-rank">${t.rank}.</span>
+                            <span class="lastfm-track-name" title="${escapeHtml(t.name)}">${escapeHtml(t.name)}</span>
+                            <span class="lastfm-track-duration">${fmtTrackDuration(t.duration)}</span>
+                        </li>
+                    `).join('') + '</ul>';
+                }
+
+                // Discografía (MusicBrainz)
+                if (discography.length) {
+                    html += '<div class="lastfm-subtitle">Discografía</div>';
+                    html += '<div class="lastfm-discography">' + discography.map(d =>
+                        `<a href="${encodeURI('https://musicbrainz.org/release-group/' + d.mbid)}" target="_blank" rel="noopener">`
+                        + `<span class="year">${escapeHtml(d.year)}</span>${escapeHtml(d.title)}</a>`
+                    ).join('') + '</div>';
+                }
+
                 // Artistas similares
                 if (similar.length) {
-                    html += '<div class="lastfm-similar-label">Artistas similares</div>';
+                    html += '<div class="lastfm-subtitle">Artistas similares</div>';
                     html += '<div class="lastfm-similar">' + similar.map(s =>
                         `<a href="${encodeURI(s.url || '#')}" target="_blank" rel="noopener">${escapeHtml(s.name)}</a>`
                     ).join('') + '</div>';
