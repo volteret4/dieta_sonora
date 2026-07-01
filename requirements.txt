@@ -1,0 +1,10 @@
+flask
+flask-cors
+gunicorn
+requests
+mutagen
+wakeonlan
+icalendar
+caldav
+pytz
+qbittorrent-api
