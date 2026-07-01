@@ -24,6 +24,7 @@ from icalendar import Calendar
 # Importaciones locales (asegúrate de que los archivos estén en el mismo dir o PYTHONPATH)
 from tools.sops_env import load_sops_env
 from html_generator import generar_html, enrich_with_embeds
+from lastfm_info import get_full_info_cached
 
 # --- INICIALIZACIÓN ---
 load_sops_env()
@@ -42,6 +43,7 @@ BASE_PATH = "/ruta/al/nas/lidarr/torrents_backup"
 MOODE_PATH = "/ruta/al/nas/moode/moode/temp/auto-dietpi"
 CSV_FILE = "/home/usuario/gits/pollo/dieta_sonora/albums.csv"
 EMBED_CACHE = "/home/usuario/gits/pollo/dieta_sonora/embeds_cache.json"
+LASTFM_INFO_CACHE = "/home/usuario/gits/pollo/dieta_sonora/lastfm_info_cache.json"
 SCRIPT_CALENDARIO = "/home/usuario/gits/pollo/dieta_sonora/main.sh"
 SCRIPT_ESCUCHADOS = "/home/usuario/gits/pollo/dieta_sonora/tools/discos_escuchados_calendario.py"
 AIRSONIC_URL = "http://192.0.2.10:4040/rest/startScan?u=admin&p=j2WQMyQLX9n9ohkY2vXk&v=1.15.0&c=curl&f=json&fullScan=false"
@@ -274,6 +276,26 @@ def api_albums():
         key = (_normalize(album.get('artist', '')), _normalize(album.get('album', '')))
         album['type'] = tipos.get(key, 'vevent')
     return jsonify(json_data)
+
+
+@app.route('/api/lastfm_info')
+def lastfm_info():
+    """
+    Info enriquecida de artista/álbum para el panel lateral (bajo demanda, cacheada).
+    Query params: ?artist=...&album=...
+    """
+    artist = (request.args.get('artist') or '').strip()
+    album_name = (request.args.get('album') or '').strip()
+
+    if not artist or not album_name:
+        return jsonify({"error": "Faltan parámetros artist/album"}), 400
+
+    try:
+        data = get_full_info_cached(artist, album_name, cache_file=LASTFM_INFO_CACHE)
+        return jsonify(data)
+    except Exception as e:
+        logger.error(f"Error en lastfm_info: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route('/api/delete', methods=['POST'])
