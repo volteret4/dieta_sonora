@@ -217,7 +217,21 @@ def generar_html(json_data=None):
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Discos Nuevos</title>
+        <link rel="stylesheet" href="/theme-palettes.css">
         <style>
+            :root, [data-theme="og"] {
+                --bg: #0a0e27;
+                --surface: #16213e;
+                --surface-2: #1f2d4a;
+                --border: #2d3e5f;
+                --text: #b0b8c9;
+                --text-muted: #7a8694;
+                --accent: #35bf88;
+                --accent-2: #8e44ad;
+                --success: #35bf88;
+                --warning: #f39c12;
+                --danger: #e74c3c;
+            }
             * {
                 margin: 0;
                 padding: 0;
@@ -225,8 +239,8 @@ def generar_html(json_data=None):
             }
             body {
                 font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                background-color: #0a0e27;
-                color: #b0b8c9;
+                background-color: var(--bg);
+                color: var(--text);
                 display: flex;
                 height: 100vh;
                 overflow: hidden;
@@ -247,23 +261,23 @@ def generar_html(json_data=None):
                 gap: 20px;
             }
             .album {
-                background-color: #16213e;
+                background-color: var(--surface);
                 border-radius: 10px;
                 box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
                 padding: 10px;
                 cursor: pointer;
                 transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
                 text-align: center;
-                border: 2px solid #1f2d4a;
+                border: 2px solid var(--surface-2);
                 position: relative;
             }
             .album:hover {
                 transform: translateY(-5px);
                 box-shadow: 0 6px 12px rgba(53, 191, 136, 0.3);
-                border-color: #35bf88;
+                border-color: var(--accent);
             }
             .album.selected {
-                border: 3px solid #35bf88;
+                border: 3px solid var(--accent);
                 box-shadow: 0 6px 12px rgba(53, 191, 136, 0.5);
             }
             .album img {
@@ -280,12 +294,12 @@ def generar_html(json_data=None):
             }
             .album-name {
                 font-size: 13px;
-                color: #b0b8c9;
+                color: var(--text);
                 margin-top: 5px;
             }
             .album-date {
                 font-size: 12px;
-                color: #7a8694;
+                color: var(--text-muted);
                 margin-top: 5px;
             }
             .album-type-badge {
@@ -300,19 +314,19 @@ def generar_html(json_data=None):
                 text-transform: uppercase;
                 opacity: 0.85;
             }
-            .badge-top10 { background: #f39c12; color: #0a0e27; }
-            .badge-manual { background: #8e44ad; color: #fff; }
+            .badge-top10 { background: var(--warning); color: var(--bg); }
+            .badge-manual { background: var(--accent-2); color: #fff; }
 
-            .album.type-top10 { border-color: #f39c12; }
-            .album.type-top10:hover { border-color: #f39c12; box-shadow: 0 6px 12px rgba(243,156,18,0.35); }
-            .album.type-manual { border-color: #8e44ad; }
-            .album.type-manual:hover { border-color: #8e44ad; box-shadow: 0 6px 12px rgba(142,68,173,0.35); }
+            .album.type-top10 { border-color: var(--warning); }
+            .album.type-top10:hover { border-color: var(--warning); box-shadow: 0 6px 12px rgba(243,156,18,0.35); }
+            .album.type-manual { border-color: var(--accent-2); }
+            .album.type-manual:hover { border-color: var(--accent-2); box-shadow: 0 6px 12px rgba(142,68,173,0.35); }
 
             .delete-btn {
                 position: absolute;
                 top: 10px;
                 right: 10px;
-                background: #e74c3c;
+                background: var(--danger);
                 color: white;
                 border: none;
                 border-radius: 50%;
@@ -337,18 +351,18 @@ def generar_html(json_data=None):
             .sidebar {
                 width: 30%;
                 height: 100vh;
-                background-color: #16213e;
-                border-left: 2px solid #1f2d4a;
+                background-color: var(--surface);
+                border-left: 2px solid var(--surface-2);
                 overflow-y: auto;
                 padding: 20px;
             }
             .sidebar h2 {
                 font-size: 18px;
                 margin-bottom: 15px;
-                color: #35bf88;
+                color: var(--accent);
             }
             .sidebar-placeholder {
-                color: #7a8694;
+                color: var(--text-muted);
                 text-align: center;
                 margin-top: 50px;
                 font-size: 14px;
@@ -359,24 +373,24 @@ def generar_html(json_data=None):
                 font-size: 12px;
             }
             .flac-table th {
-                background-color: #1f2d4a;
+                background-color: var(--surface-2);
                 padding: 8px;
-                border: 1px solid #2d3e5f;
+                border: 1px solid var(--border);
                 text-align: left;
                 position: sticky;
                 top: 0;
                 font-size: 11px;
-                color: #35bf88;
+                color: var(--accent);
             }
             .flac-table td {
                 padding: 8px;
-                border: 1px solid #2d3e5f;
-                background-color: #16213e;
-                color: #b0b8c9;
+                border: 1px solid var(--border);
+                background-color: var(--surface);
+                color: var(--text);
             }
             .download-btn {
-                background: #35bf88;
-                color: #0a0e27;
+                background: var(--accent);
+                color: var(--bg);
                 border: none;
                 padding: 5px 10px;
                 border-radius: 5px;
@@ -390,13 +404,13 @@ def generar_html(json_data=None):
                 box-shadow: 0 3px 10px rgba(53, 191, 136, 0.5);
             }
             .download-btn:disabled {
-                background: #7a8694;
+                background: var(--text-muted);
                 cursor: not-allowed;
             }
             .album-header {
                 margin-bottom: 15px;
                 padding-bottom: 10px;
-                border-bottom: 2px solid #1f2d4a;
+                border-bottom: 2px solid var(--surface-2);
             }
             .album-header h3 {
                 font-size: 16px;
@@ -405,14 +419,14 @@ def generar_html(json_data=None):
             }
             .album-header p {
                 font-size: 12px;
-                color: #b0b8c9;
+                color: var(--text);
             }
             h1 {
                 padding: 20px;
-                background-color: #16213e;
-                border-bottom: 2px solid #1f2d4a;
+                background-color: var(--surface);
+                border-bottom: 2px solid var(--surface-2);
                 margin: 0;
-                color: #35bf88;
+                color: var(--accent);
                 text-shadow: 0 0 10px rgba(53, 191, 136, 0.3);
             }
             .page-header {
@@ -420,8 +434,8 @@ def generar_html(json_data=None):
                 align-items: center;
                 justify-content: space-between;
                 padding: 15px 20px;
-                background-color: #16213e;
-                border-bottom: 2px solid #1f2d4a;
+                background-color: var(--surface);
+                border-bottom: 2px solid var(--surface-2);
             }
             .page-header h1 {
                 padding: 0;
@@ -436,9 +450,9 @@ def generar_html(json_data=None):
                 display: flex;
                 align-items: center;
                 gap: 7px;
-                background-color: #1f2d4a;
-                color: #b0b8c9;
-                border: 1px solid #2d3e5f;
+                background-color: var(--surface-2);
+                color: var(--text);
+                border: 1px solid var(--border);
                 padding: 8px 14px;
                 border-radius: 8px;
                 cursor: pointer;
@@ -448,17 +462,17 @@ def generar_html(json_data=None):
                 white-space: nowrap;
             }
             .action-btn:hover {
-                background-color: #35bf88;
-                border-color: #35bf88;
-                color: #0a0e27;
+                background-color: var(--accent);
+                border-color: var(--accent);
+                color: var(--bg);
                 box-shadow: 0 3px 10px rgba(53, 191, 136, 0.4);
             }
             .action-btn:disabled {
                 opacity: 0.5;
                 cursor: not-allowed;
-                background-color: #1f2d4a;
-                color: #7a8694;
-                border-color: #2d3e5f;
+                background-color: var(--surface-2);
+                color: var(--text-muted);
+                border-color: var(--border);
                 box-shadow: none;
             }
             .action-btn .btn-icon {
@@ -470,10 +484,10 @@ def generar_html(json_data=None):
                 width: 10px;
             }
             ::-webkit-scrollbar-track {
-                background: #1f2d4a;
+                background: var(--surface-2);
             }
             ::-webkit-scrollbar-thumb {
-                background: #35bf88;
+                background: var(--accent);
                 border-radius: 5px;
             }
             ::-webkit-scrollbar-thumb:hover {
@@ -484,11 +498,11 @@ def generar_html(json_data=None):
             .embeds-section {
                 margin-top: 18px;
                 padding-top: 14px;
-                border-top: 2px solid #1f2d4a;
+                border-top: 2px solid var(--surface-2);
             }
             .embeds-section h4 {
                 font-size: 12px;
-                color: #35bf88;
+                color: var(--accent);
                 margin-bottom: 10px;
                 text-transform: uppercase;
                 letter-spacing: 0.5px;
@@ -498,7 +512,7 @@ def generar_html(json_data=None):
             }
             .embed-label {
                 font-size: 11px;
-                color: #7a8694;
+                color: var(--text-muted);
                 margin-bottom: 5px;
             }
             .embed-block iframe {
@@ -511,50 +525,50 @@ def generar_html(json_data=None):
             .lastfm-section {
                 margin-top: 18px;
                 padding-top: 14px;
-                border-top: 2px solid #1f2d4a;
+                border-top: 2px solid var(--surface-2);
             }
             .lastfm-section h4 {
                 font-size: 12px;
-                color: #35bf88;
+                color: var(--accent);
                 margin-bottom: 10px;
                 text-transform: uppercase;
                 letter-spacing: 0.5px;
             }
             .lastfm-loading {
-                color: #7a8694;
+                color: var(--text-muted);
                 font-size: 12px;
                 display: flex;
                 align-items: center;
                 gap: 4px;
             }
             .lastfm-empty {
-                color: #7a8694;
+                color: var(--text-muted);
                 font-size: 12px;
                 font-style: italic;
             }
             .lastfm-meta {
                 font-size: 11px;
-                color: #7a8694;
+                color: var(--text-muted);
                 margin-bottom: 10px;
             }
             .lastfm-bio {
                 font-size: 12px;
                 line-height: 1.5;
-                color: #b0b8c9;
+                color: var(--text);
                 margin-bottom: 12px;
                 max-height: 220px;
                 overflow-y: auto;
                 white-space: pre-line;
             }
             .lastfm-bio a {
-                color: #35bf88;
+                color: var(--accent);
                 white-space: nowrap;
             }
             .lastfm-subtitle {
                 font-size: 10px;
                 letter-spacing: 0.08em;
                 text-transform: uppercase;
-                color: #7a8694;
+                color: var(--text-muted);
                 margin: 14px 0 6px;
             }
             .lastfm-tracks {
@@ -569,11 +583,11 @@ def generar_html(json_data=None):
                 display: flex;
                 align-items: center;
                 gap: 8px;
-                color: #b0b8c9;
+                color: var(--text);
                 padding: 2px 0;
             }
             .lastfm-track-rank {
-                color: #7a8694;
+                color: var(--text-muted);
                 width: 18px;
                 text-align: right;
                 flex-shrink: 0;
@@ -585,7 +599,7 @@ def generar_html(json_data=None):
                 white-space: nowrap;
             }
             .lastfm-track-duration {
-                color: #7a8694;
+                color: var(--text-muted);
                 flex-shrink: 0;
             }
             .lastfm-discography {
@@ -596,18 +610,18 @@ def generar_html(json_data=None):
             }
             .lastfm-discography a {
                 font-size: 11px;
-                color: #b0b8c9;
+                color: var(--text);
                 text-decoration: none;
-                background: #1f2d4a;
+                background: var(--surface-2);
                 padding: 3px 8px;
                 border-radius: 10px;
             }
             .lastfm-discography a:hover {
-                background: #2d3e5f;
+                background: var(--border);
                 color: #ffffff;
             }
             .lastfm-discography a .year {
-                color: #35bf88;
+                color: var(--accent);
                 margin-right: 4px;
             }
             .lastfm-stats {
@@ -623,7 +637,7 @@ def generar_html(json_data=None):
             }
             .lastfm-stat {
                 font-size: 10px;
-                color: #7a8694;
+                color: var(--text-muted);
             }
             .lastfm-tags {
                 display: flex;
@@ -632,8 +646,8 @@ def generar_html(json_data=None):
                 margin-bottom: 12px;
             }
             .lastfm-tag {
-                background: #1f2d4a;
-                color: #b0b8c9;
+                background: var(--surface-2);
+                color: var(--text);
                 font-size: 10px;
                 padding: 3px 8px;
                 border-radius: 10px;
@@ -645,7 +659,7 @@ def generar_html(json_data=None):
             }
             .lastfm-similar a {
                 font-size: 11px;
-                color: #35bf88;
+                color: var(--accent);
                 text-decoration: none;
                 background: rgba(53, 191, 136, 0.1);
                 padding: 3px 8px;
@@ -657,8 +671,8 @@ def generar_html(json_data=None):
 
             /* Loader */
             .loader {
-                border: 3px solid #1f2d4a;
-                border-top: 3px solid #35bf88;
+                border: 3px solid var(--surface-2);
+                border-top: 3px solid var(--accent);
                 border-radius: 50%;
                 width: 20px;
                 height: 20px;
@@ -676,8 +690,8 @@ def generar_html(json_data=None):
                 position: fixed;
                 top: 20px;
                 right: 20px;
-                background: #35bf88;
-                color: #0a0e27;
+                background: var(--accent);
+                color: var(--bg);
                 padding: 15px 25px;
                 border-radius: 10px;
                 box-shadow: 0 5px 20px rgba(53, 191, 136, 0.5);
@@ -691,7 +705,7 @@ def generar_html(json_data=None):
                 transform: translateY(0);
             }
             .notification.error {
-                background: #e74c3c;
+                background: var(--danger);
                 color: white;
             }
         </style>
@@ -1114,6 +1128,7 @@ def generar_html(json_data=None):
                 }
             }
         </script>
+        <script src="/theme-picker.js"></script>
     </body>
     </html>
     """
