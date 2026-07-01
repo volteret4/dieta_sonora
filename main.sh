@@ -1,5 +1,10 @@
-PYTHON="$HOME/Scripts/python_venv/bin/python3"
-DIR="$HOME/gits/pollo/dieta_sonora/"
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/"
+VENV_PYTHON="$HOME/Scripts/python_venv/bin/python3"
+if [ -x "$VENV_PYTHON" ]; then
+    PYTHON="$VENV_PYTHON"
+else
+    PYTHON="python3"
+fi
 CSV_FILE="albums.csv"
 
 cd "$DIR" || exit 1

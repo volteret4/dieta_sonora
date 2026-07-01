@@ -27,7 +27,11 @@ from html_generator import generar_html, enrich_with_embeds
 from lastfm_info import get_full_info_cached
 
 # --- INICIALIZACIÓN ---
-load_sops_env()
+try:
+    load_sops_env()
+except FileNotFoundError:
+    # En Docker las variables llegan ya descifradas vía docker-compose (scripts/up.sh)
+    print("Aviso: no se encontró .encrypted.env; usando variables de entorno ya exportadas")
 app = Flask(__name__)
 CORS(app) # Habilita CORS para todas las rutas
 app.config['JSON_AS_ASCII'] = False
@@ -36,17 +40,21 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # --- CONFIGURACIÓN MÓDULO MÚSICA (app.py) ---
-DATA_JSON = "/home/pepe/gits/pollo/dieta_sonora/resultado_flacs.json"
-HTML_OUTPUT = "/home/pepe/gits/pollo/dieta_sonora/resumen_flacs.html"
-DOWNLOAD_FOLDER = "/mnt/NFS/lidarr/torrents_backup/watch_torrents"
-BASE_PATH = "/mnt/NFS/lidarr/torrents_backup"
-MOODE_PATH = "/mnt/NFS/moode/moode/temp/auto-dietpi"
-CSV_FILE = "/home/pepe/gits/pollo/dieta_sonora/albums.csv"
-EMBED_CACHE = "/home/pepe/gits/pollo/dieta_sonora/embeds_cache.json"
-LASTFM_INFO_CACHE = "/home/pepe/gits/pollo/dieta_sonora/lastfm_info_cache.json"
-SCRIPT_CALENDARIO = "/home/pepe/gits/pollo/dieta_sonora/main.sh"
-SCRIPT_ESCUCHADOS = "/home/pepe/gits/pollo/dieta_sonora/tools/discos_escuchados_calendario.py"
-AIRSONIC_URL = "http://192.168.1.133:4040/rest/startScan?u=admin&p=j2WQMyQLX9n9ohkY2vXk&v=1.15.0&c=curl&f=json&fullScan=false"
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_JSON = os.path.join(APP_DIR, "resultado_flacs.json")
+HTML_OUTPUT = os.path.join(APP_DIR, "resumen_flacs.html")
+DOWNLOAD_FOLDER = os.getenv('LIDARR_WATCH_TORRENTS_PATH', '/mnt/NFS/lidarr/torrents_backup/watch_torrents')
+BASE_PATH = os.getenv('LIDARR_TORRENTS_PATH', '/mnt/NFS/lidarr/torrents_backup')
+MOODE_PATH = os.getenv('MOODE_TEMP_PATH', '/mnt/NFS/moode/moode/temp/auto-dietpi')
+CSV_FILE = os.path.join(APP_DIR, "albums.csv")
+EMBED_CACHE = os.path.join(APP_DIR, "embeds_cache.json")
+LASTFM_INFO_CACHE = os.path.join(APP_DIR, "lastfm_info_cache.json")
+SCRIPT_CALENDARIO = os.path.join(APP_DIR, "main.sh")
+SCRIPT_ESCUCHADOS = os.path.join(APP_DIR, "tools", "discos_escuchados_calendario.py")
+AIRSONIC_URL = os.getenv(
+    'AIRSONIC_URL',
+    "http://192.168.1.133:4040/rest/startScan?u=admin&p=j2WQMyQLX9n9ohkY2vXk&v=1.15.0&c=curl&f=json&fullScan=false",
+)
 
 RADICALE_URL   = os.getenv('RADICALE_URL', '').rstrip('/')
 RADICALE_USER  = os.getenv('RADICALE_USERNAME', '')
@@ -236,7 +244,7 @@ def run_tts_conversion():
         update_tts_status(progress=0, current_article="Iniciando conversión...")
         os.chdir(WORK_DIR)
 
-        cmd = ['python3', '/home/pepe/contenedores/podcast-tts/process_selection.py', '--selection', SELECTION_FILE, '--generate-feed']
+        cmd = ['python3', os.path.join(WORK_DIR, 'process_selection.py'), '--selection', SELECTION_FILE, '--generate-feed']
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
 
         with open(LOG_FILE, 'w') as log:
