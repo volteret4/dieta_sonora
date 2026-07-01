@@ -86,16 +86,38 @@ def _normalize_tags(raw, limit=8):
     return names[:limit]
 
 
-def _strip_lastfm_bio(bio_html):
-    """Quita el aviso legal final ('Read more on Last.fm') y las etiquetas HTML de la bio."""
+def _clean_bio_html(bio_html):
+    """Quita el aviso legal final ('Read more on Last.fm') y las etiquetas HTML de la bio.
+    Sin recortar: se usa bio.content (texto completo), no bio.summary."""
     if not bio_html:
         return ""
     text = re.sub(r'<a href="[^"]*">Read more on Last\.fm</a>\.?', "", bio_html)
     text = re.sub(r"<[^>]+>", "", text).strip()
-    # Recortar a un párrafo razonable para el panel lateral
-    if len(text) > 500:
-        text = text[:500].rsplit(" ", 1)[0] + "…"
     return text
+
+
+def _normalize_tracks(raw):
+    """album.getInfo.tracks.track tiene la misma inconsistencia de forma que las tags."""
+    if not raw:
+        return []
+    if isinstance(raw, dict):
+        raw = [raw]
+    tracks = []
+    for i, t in enumerate(raw):
+        if not isinstance(t, dict):
+            continue
+        attr = t.get("@attr") or {}
+        try:
+            rank = int(attr.get("rank", i + 1))
+        except (TypeError, ValueError):
+            rank = i + 1
+        try:
+            duration = int(t.get("duration") or 0)
+        except (TypeError, ValueError):
+            duration = 0
+        tracks.append({"name": t.get("name", ""), "duration": duration, "rank": rank})
+    tracks.sort(key=lambda x: x["rank"])
+    return tracks
 
 
 def get_artist_info(artist):
@@ -111,10 +133,11 @@ def get_artist_info(artist):
     raw_tags = tags_obj.get("tag", []) if isinstance(tags_obj, dict) else []
     return {
         "url": a.get("url", ""),
+        "mbid": a.get("mbid", ""),
         "listeners": int(stats.get("listeners") or 0),
         "playcount": int(stats.get("playcount") or 0),
         "tags": _normalize_tags(raw_tags),
-        "bio_summary": _strip_lastfm_bio(bio.get("summary", "")),
+        "bio": _clean_bio_html(bio.get("content") or bio.get("summary") or ""),
     }
 
 
@@ -127,11 +150,15 @@ def get_album_info(artist, album):
         return {}
     tags_obj = al.get("tags") or {}
     raw_tags = tags_obj.get("tag", []) if isinstance(tags_obj, dict) else []
+    tracks_obj = al.get("tracks") or {}
+    raw_tracks = tracks_obj.get("track", []) if isinstance(tracks_obj, dict) else tracks_obj
     return {
         "url": al.get("url", ""),
+        "mbid": al.get("mbid", ""),
         "listeners": int(al.get("listeners") or 0),
         "playcount": int(al.get("playcount") or 0),
         "tags": _normalize_tags(raw_tags),
+        "tracks": _normalize_tracks(raw_tracks),
     }
 
 
@@ -192,6 +219,44 @@ def get_musicbrainz_release_info(artist, album):
     }
 
 
+def get_musicbrainz_artist_mbid(artist):
+    """Fallback cuando Last.fm no trae mbid de artista."""
+    data = _mb_get("artist", {"query": f'artist:"{artist}"', "limit": 1})
+    if not data:
+        return ""
+    artists = data.get("artists", [])
+    return artists[0]["id"] if artists else ""
+
+
+def get_artist_discography(artist_mbid, exclude_album=None, limit=10):
+    """
+    Discografía (solo álbumes de estudio) vía MusicBrainz release-groups,
+    excluyendo el álbum actual y los tipos secundarios (directos, compilaciones,
+    remixes, demos...) para quedarnos con lanzamientos originales.
+    """
+    if not artist_mbid:
+        return []
+    data = _mb_get("release-group", {"artist": artist_mbid, "type": "album", "limit": 50})
+    if not data:
+        return []
+    exclude_norm = (exclude_album or "").strip().lower()
+    out = []
+    for g in data.get("release-groups", []):
+        if g.get("secondary-types"):
+            continue
+        title = g.get("title", "")
+        date = g.get("first-release-date", "")
+        if not title or not date or title.strip().lower() == exclude_norm:
+            continue
+        out.append({
+            "title": title,
+            "year": date[:4],
+            "mbid": g.get("id", ""),
+        })
+    out.sort(key=lambda x: x["year"])
+    return out[:limit]
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # COMBINADO + CACHÉ
 # ──────────────────────────────────────────────────────────────────────────────
@@ -201,6 +266,7 @@ def get_full_info(artist, album):
         "artist": {},
         "album": {},
         "similar": [],
+        "discography": [],
         "sources": {"lastfm": False, "musicbrainz": False},
     }
 
@@ -225,7 +291,16 @@ def get_full_info(artist, album):
             result["sources"]["musicbrainz"] = True
             result["album"].update({k: v for k, v in mb_info.items() if v})
     except Exception as e:
-        print(f"    ⚠ Error consultando MusicBrainz para {artist} – {album}: {e}")
+        print(f"    ⚠ Error consultando MusicBrainz (release) para {artist} – {album}: {e}")
+
+    try:
+        artist_mbid = result["artist"].get("mbid") or get_musicbrainz_artist_mbid(artist)
+        discography = get_artist_discography(artist_mbid, exclude_album=album)
+        if discography:
+            result["sources"]["musicbrainz"] = True
+            result["discography"] = discography
+    except Exception as e:
+        print(f"    ⚠ Error consultando MusicBrainz (discografía) para {artist}: {e}")
 
     return result
 
