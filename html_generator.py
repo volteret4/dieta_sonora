@@ -219,7 +219,7 @@ def generar_html(json_data=None):
         <title>Discos Nuevos</title>
         <link rel="stylesheet" href="/theme-palettes.css">
         <style>
-            :root, [data-theme="og"] {
+            [data-theme="og"], :root:not([data-theme]) {
                 --bg: #0a0e27;
                 --surface: #16213e;
                 --surface-2: #1f2d4a;
