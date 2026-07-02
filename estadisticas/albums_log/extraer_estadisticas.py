@@ -8,6 +8,7 @@ Usage:
     pip install caldav icalendar requests
     python extract.py
 """
+import argparse
 import sqlite3
 import csv
 import json
@@ -30,7 +31,7 @@ RADICALE_PASSWORD = os.getenv("RADICALE_PW")
 CALENDAR_PATH     = ""    # path within Radicale
 
 DB_PATH           = "music_stats.db"
-JSON_PATH         = "stats.json"
+JSON_PATH         = "data.json"  # nombre que de verdad fetchea la web (antes "stats.json", nunca lo leía nadie)
 
 MUSICBRAINZ_UA    = "MusicCalendarExtractor/1.0 (your@email.com)"
 MB_RATE_LIMIT     = 1.1   # seconds between MusicBrainz requests
@@ -700,8 +701,30 @@ def export_json(conn: sqlite3.Connection, path: str):
 # ─────────────────────────────────────────────
 
 def main():
+    parser = argparse.ArgumentParser(
+        description="Extrae datos del calendario a music_stats.db y exporta data.json para la web."
+    )
+    parser.add_argument(
+        "--export-only", action="store_true",
+        help="No vuelve a consultar CalDAV/MusicBrainz: solo exporta data.json desde "
+             "music_stats.db tal como está (usado por el orquestador, tras "
+             "cal_to_estadisticas.py que ya dejó la DB al día)."
+    )
+    args = parser.parse_args()
+
     print("🎵 Music Calendar Extractor")
     print("=" * 40)
+
+    if args.export_only:
+        print(f"\n💾 Abriendo {DB_PATH}...")
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("PRAGMA foreign_keys = ON")
+        init_db(conn)
+        print(f"\n📤 Exportando {JSON_PATH}...")
+        export_json(conn, JSON_PATH)
+        conn.close()
+        print("\n✅ ¡Listo!")
+        return
 
     # 1. Fetch CalDAV
     print("\n📅 Fetching calendar from Radicale...")

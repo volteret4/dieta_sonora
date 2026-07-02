@@ -1,1 +1,5 @@
 flask
+requests
+icalendar
+qbittorrent-api
+python-dotenv
