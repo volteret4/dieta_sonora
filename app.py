@@ -80,6 +80,128 @@ TASKS_URL = "https://radicale.pollete.duckdns.org/pollo/00169e81-e5f4-d26a-d1c9-
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
+# ── Panel de configuración (⚙) ───────────────────────────────────────────────
+# Mismo patrón que index/app.py. Las variables "service" viven en el .env
+# propio (services/dieta_sonora/.env, montado en /app/.env) y afectan solo a
+# este contenedor. Las "root" (rutas de bind mount) viven en el .env raíz de
+# tumtumpa (montado en /app/root.env de solo esta app) porque docker-compose
+# solo interpola ${VAR} de ese archivo para las rutas de volumes — cambiarlas
+# requiere RECREAR el contenedor, no solo reiniciarlo.
+SETTINGS_ENV_PATH = os.path.join(APP_DIR, ".env")
+SETTINGS_ROOT_ENV_PATH = os.path.join(APP_DIR, "root.env")
+SETTINGS_PASSWORD = os.getenv("SETTINGS_PASSWORD", "")
+VARS_SPEC = [
+    {"name": "LASTFM_API_KEY", "secret": True, "help": "API key de Last.fm"},
+    {"name": "RADICALE_URL", "secret": False, "help": "URL base del servidor Radicale"},
+    {"name": "RADICALE_USERNAME", "secret": False, "help": "Usuario Radicale"},
+    {"name": "RADICALE_PW", "secret": True, "help": "Contraseña Radicale"},
+    {"name": "RADICALE_CALENDAR", "secret": False, "help": "Ruta del calendario de lanzamientos"},
+    {"name": "CALENDAR_TASKS", "secret": False, "help": "Ruta del calendario de tareas"},
+    {"name": "AIRSONIC_URL", "secret": True, "help": "URL de escaneo de Airsonic (incluye credenciales embebidas)"},
+    {"name": "TELEGRAM_TOKEN", "secret": True, "help": "Token del bot de Telegram"},
+    {"name": "TELEGRAM_CHAT_ID", "secret": False, "help": "Chat ID de Telegram"},
+    {"name": "DIETA_SONORA_LIDARR_PATH", "secret": False, "location": "root",
+     "help": "Ruta host del backup de torrents de Lidarr (bind mount — requiere recrear el contenedor)"},
+    {"name": "DIETA_SONORA_MOODE_PATH", "secret": False, "location": "root",
+     "help": "Ruta host del temp de Moode (bind mount — requiere recrear el contenedor)"},
+]
+
+
+def _settings_path(spec):
+    return SETTINGS_ROOT_ENV_PATH if spec.get("location") == "root" else SETTINGS_ENV_PATH
+
+
+def _read_env_file(path):
+    values = {}
+    if not os.path.exists(path):
+        return values
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            s = line.strip()
+            if not s or s.startswith("#") or "=" not in s:
+                continue
+            k, v = s.split("=", 1)
+            values[k.strip()] = v.strip()
+    return values
+
+
+def _write_env_file(path, updates):
+    lines = []
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+    seen = set()
+    out = []
+    for line in lines:
+        s = line.strip()
+        if s and not s.startswith("#") and "=" in s:
+            k = s.split("=", 1)[0].strip()
+            if k in updates:
+                out.append(f"{k}={updates[k]}\n")
+                seen.add(k)
+                continue
+        out.append(line)
+    for k, v in updates.items():
+        if k not in seen:
+            if out and not out[-1].endswith("\n"):
+                out[-1] += "\n"
+            out.append(f"{k}={v}\n")
+    with open(path, "w", encoding="utf-8") as f:
+        f.writelines(out)
+
+
+def _current_value(spec):
+    path = _settings_path(spec)
+    file_vals = _read_env_file(path)
+    if spec["name"] in file_vals:
+        return file_vals[spec["name"]]
+    return os.environ.get(spec["name"], spec.get("default", ""))
+
+
+def _check_auth(password):
+    return (not SETTINGS_PASSWORD) or password == SETTINGS_PASSWORD
+
+
+@app.route("/api/settings", methods=["POST"])
+def api_settings():
+    d = request.get_json(silent=True) or {}
+    password = d.get("password") or ""
+    requires = bool(SETTINGS_PASSWORD)
+    authorized = _check_auth(password)
+    if requires and not authorized:
+        return jsonify({
+            "requires_password": True, "authorized": False,
+            "error": "Contraseña incorrecta" if password else None,
+        })
+    vars_out = [
+        {"name": v["name"], "value": _current_value(v), "secret": v["secret"], "help": v.get("help", "")}
+        for v in VARS_SPEC
+    ]
+    return jsonify({"requires_password": requires, "authorized": True, "vars": vars_out})
+
+
+@app.route("/api/settings/save", methods=["POST"])
+def api_settings_save():
+    d = request.get_json(silent=True) or {}
+    if not _check_auth(d.get("password") or ""):
+        return jsonify({"error": "Contraseña incorrecta"}), 403
+    by_name = {v["name"]: v for v in VARS_SPEC}
+    updates = {k: v for k, v in (d.get("values") or {}).items() if k in by_name}
+    if not updates:
+        return jsonify({"error": "Nada que guardar"}), 400
+    by_path = {}
+    for k, v in updates.items():
+        path = _settings_path(by_name[k])
+        by_path.setdefault(path, {})[k] = v
+    for path, vals in by_path.items():
+        _write_env_file(path, vals)
+    touched_root = any(_settings_path(by_name[k]) == SETTINGS_ROOT_ENV_PATH for k in updates)
+    message = "Guardado. Reinicia el contenedor para aplicar los cambios."
+    if touched_root:
+        message = ("Guardado. Alguna variable es una ruta de bind mount — hace falta "
+                    "RECREAR el contenedor (docker compose up -d --build), no basta con reiniciarlo.")
+    return jsonify({"ok": True, "message": message})
+
 # Estado global del proceso TTS
 conversion_status = {
     "running": False,
@@ -275,6 +397,10 @@ def theme_palettes_css():
 @app.route('/theme-picker.js')
 def theme_picker_js():
     return send_from_directory(APP_DIR, 'theme-picker.js')
+
+@app.route('/settings-panel.js')
+def settings_panel_js():
+    return send_from_directory(APP_DIR, 'settings-panel.js')
 
 @app.route('/discos_nuevos')
 def discos_nuevos():
