@@ -121,7 +121,10 @@ def _read_env_file(path):
             if not s or s.startswith("#") or "=" not in s:
                 continue
             k, v = s.split("=", 1)
-            values[k.strip()] = v.strip()
+            v = v.strip()
+            if len(v) >= 2 and v[0] == v[-1] and v[0] in ('"', "'"):
+                v = v[1:-1]
+            values[k.strip()] = v
     return values
 
 
@@ -158,21 +161,29 @@ def _current_value(spec):
     return os.environ.get(spec["name"], spec.get("default", ""))
 
 
+_HAS_SECRETS = any(v.get("secret") for v in VARS_SPEC)
+
+
 def _check_auth(password):
-    return (not SETTINGS_PASSWORD) or password == SETTINGS_PASSWORD
+    if not SETTINGS_PASSWORD:
+        # Sin contraseña configurada: solo se permite si no hay nada sensible
+        # que proteger. Si hay secretos, el panel queda bloqueado hasta que
+        # se defina SETTINGS_PASSWORD — nunca los sirve sin autenticación.
+        return not _HAS_SECRETS
+    return password == SETTINGS_PASSWORD
 
 
 @app.route("/api/settings", methods=["POST"])
 def api_settings():
     d = request.get_json(silent=True) or {}
     password = d.get("password") or ""
-    requires = bool(SETTINGS_PASSWORD)
+    requires = bool(SETTINGS_PASSWORD) or _HAS_SECRETS
     authorized = _check_auth(password)
     if requires and not authorized:
-        return jsonify({
-            "requires_password": True, "authorized": False,
-            "error": "Contraseña incorrecta" if password else None,
-        })
+        error = "Contraseña incorrecta" if password else None
+        if not SETTINGS_PASSWORD:
+            error = "Este servicio tiene credenciales pero no hay SETTINGS_PASSWORD configurada. Añádela al .env y reinicia el contenedor."
+        return jsonify({"requires_password": True, "authorized": False, "error": error})
     vars_out = [
         {"name": v["name"], "value": _current_value(v), "secret": v["secret"], "help": v.get("help", "")}
         for v in VARS_SPEC
