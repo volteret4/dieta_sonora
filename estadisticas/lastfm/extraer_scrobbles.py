@@ -31,10 +31,15 @@ Resiliencia:
 
 import sqlite3, json, time, re, os
 from datetime import datetime, timezone
-from sops_env import load_sops_env
 import requests
 
-load_sops_env()
+try:
+    # En Docker las vars ya llegan vía env_file; sops_env es solo para
+    # ejecución manual en el host con .encrypted.env disponible.
+    from sops_env import load_sops_env
+    load_sops_env()
+except (ImportError, FileNotFoundError, RuntimeError):
+    pass
 
 # ─────────────────────────────────────────────
 #  CONFIGURACIÓN
@@ -50,9 +55,9 @@ MB_BASE      = "https://musicbrainz.org/ws/2/"
 MB_UA        = "ScrobbleExtractor/1.0 (your@email.com)"
 MB_RATE_LIMIT = 1.1
 
-DB_PATH          = "lastfm_stats.db"
-JSON_PATH        = "lastfm_stats.json"
-DETAIL_JSON_PATH = "lastfm_detail.json"
+DB_PATH          = os.getenv("LASTFM_DB", "lastfm_stats.db")
+JSON_PATH        = os.getenv("LASTFM_JSON", "lastfm_stats.json")
+DETAIL_JSON_PATH = os.getenv("LASTFM_DETAIL_JSON", "lastfm_detail.json")
 
 # Ventana de dedup entre servicios (segundos).
 DEDUP_WINDOW_SECS = 120

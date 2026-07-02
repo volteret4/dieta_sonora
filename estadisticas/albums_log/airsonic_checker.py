@@ -22,9 +22,14 @@ from xml.etree import ElementTree as ET
 
 import requests
 from icalendar import Calendar, Todo
-from sops_env import load_sops_env
 
-load_sops_env()
+try:
+    # En Docker las vars ya llegan vía env_file; sops_env es solo para
+    # ejecución manual en el host con .encrypted.env disponible.
+    from sops_env import load_sops_env
+    load_sops_env()
+except (ImportError, FileNotFoundError, RuntimeError):
+    pass
 
 RADICALE_URL         = os.getenv('RADICALE_URL',          '').rstrip('/')
 RADICALE_USER        = os.getenv('RADICALE_USERNAME',     '')
