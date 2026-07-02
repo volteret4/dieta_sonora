@@ -1129,6 +1129,7 @@ def generar_html(json_data=None):
             }
         </script>
         <script src="/theme-picker.js"></script>
+        <script src="/settings-panel.js"></script>
     </body>
     </html>
     """
