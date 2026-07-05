@@ -51,10 +51,7 @@ EMBED_CACHE = os.path.join(APP_DIR, "embeds_cache.json")
 LASTFM_INFO_CACHE = os.path.join(APP_DIR, "lastfm_info_cache.json")
 SCRIPT_CALENDARIO = os.path.join(APP_DIR, "main.sh")
 SCRIPT_ESCUCHADOS = os.path.join(APP_DIR, "tools", "discos_escuchados_calendario.py")
-AIRSONIC_URL = os.getenv(
-    'AIRSONIC_URL',
-    "http://192.168.1.133:4040/rest/startScan?u=admin&p=j2WQMyQLX9n9ohkY2vXk&v=1.15.0&c=curl&f=json&fullScan=false",
-)
+AIRSONIC_URL = os.getenv('AIRSONIC_URL', '')
 
 RADICALE_URL   = os.getenv('RADICALE_URL', '').rstrip('/')
 RADICALE_USER  = os.getenv('RADICALE_USERNAME', '')
