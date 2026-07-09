@@ -483,9 +483,16 @@ def download_torrent():
 
     # Lógica simplificada de descarga
     file_path = os.path.join(DOWNLOAD_FOLDER, f"{group_id}.torrent")
-    res = subprocess.run(['wget', '-O', file_path, download_url])
+    try:
+        r = requests.get(download_url, timeout=30)
+        r.raise_for_status()
+        with open(file_path, 'wb') as f:
+            f.write(r.content)
+    except Exception as e:
+        logger.error(f"Error descargando torrent {group_id}: {e}")
+        return jsonify({"error": str(e)}), 500
 
-    if res.returncode == 0 and eliminar_grupo_de_datos(group_id):
+    if eliminar_grupo_de_datos(group_id):
         return jsonify({"success": True, "message": "Descargado y actualizado"})
     return jsonify({"error": "Error en proceso"}), 500
 
