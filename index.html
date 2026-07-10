@@ -496,6 +496,110 @@
                 background: var(--danger);
                 color: white;
             }
+
+            .table-scroll {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            /* ── Tablet (~768px) ── */
+            @media (max-width: 768px) {
+                body {
+                    display: block;
+                    height: auto;
+                    overflow-x: hidden;
+                    overflow-y: auto;
+                }
+                .main-container {
+                    flex-direction: column;
+                    width: 100%;
+                }
+                .albums-container {
+                    width: 100%;
+                    height: auto;
+                    overflow-y: visible;
+                    padding: 14px;
+                }
+                .sidebar {
+                    width: 100%;
+                    height: auto;
+                    max-height: none;
+                    border-left: none;
+                    border-top: 2px solid var(--surface-2);
+                    overflow-y: visible;
+                    padding: 16px;
+                }
+                .page-header {
+                    flex-wrap: wrap;
+                    gap: 10px;
+                    padding: 12px 14px;
+                }
+                .page-header h1 {
+                    font-size: 18px;
+                }
+                .header-actions {
+                    width: 100%;
+                    flex-wrap: wrap;
+                    gap: 8px;
+                }
+                .action-btn {
+                    flex: 1 1 auto;
+                    justify-content: center;
+                    min-height: 44px;
+                    padding: 10px 12px;
+                }
+                .albums-grid {
+                    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+                    gap: 12px;
+                }
+                .delete-btn {
+                    opacity: 1;
+                    width: 34px;
+                    height: 34px;
+                }
+                .download-btn {
+                    min-height: 40px;
+                    min-width: 44px;
+                    padding: 8px 14px;
+                }
+            }
+
+            /* ── Móvil (~375-480px) ── */
+            @media (max-width: 480px) {
+                .page-header h1 {
+                    font-size: 16px;
+                }
+                .header-actions {
+                    gap: 6px;
+                }
+                .action-btn {
+                    font-size: 12px;
+                    padding: 10px 8px;
+                }
+                .action-btn .btn-icon {
+                    font-size: 14px;
+                }
+                .albums-grid {
+                    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+                    gap: 10px;
+                }
+                .album-artist {
+                    font-size: 13px;
+                }
+                .album-name {
+                    font-size: 12px;
+                }
+                .flac-table {
+                    font-size: 11px;
+                }
+                .flac-table th,
+                .flac-table td {
+                    padding: 6px;
+                }
+                .lastfm-bio {
+                    max-height: 160px;
+                }
+            }
         </style>
     </head>
     <body>
@@ -611,6 +715,7 @@
                         <p>${albumName} (${year})</p>
                         <p>${flacCount} torrent${flacCount > 1 ? 's' : ''} FLAC disponible${flacCount > 1 ? 's' : ''}</p>
                     </div>
+                    <div class="table-scroll">
                     <table class="flac-table">
                         <thead>
                             <tr>
@@ -653,6 +758,7 @@
                 tableHtml += `
                         </tbody>
                     </table>
+                    </div>
                 `;
 
                 // Embeds de YouTube y Bandcamp
