@@ -14,7 +14,11 @@ from urllib.parse import urljoin
 from tools.sops_env import load_sops_env
 
 # Cargar variables de entorno desde .env
-load_sops_env()
+try:
+    load_sops_env()
+except FileNotFoundError:
+    # En Docker las variables llegan ya descifradas vía docker-compose (scripts/up.sh)
+    pass
 
 # CONFIGURACIÓN - Ajusta estos valores según tu instalación
 AIRSONIC_URL = os.getenv('AIRSONIC_URL', 'http://localhost:4040')
