@@ -49,8 +49,11 @@ if [ "$CHECKSUM_ANTES" != "$CHECKSUM_DESPUES" ]; then
     echo "Creando HTML"
     $PYTHON html_generator.py
 
-    # renombrar html
-    mv resumen_flacs.html index.html
+    # copiar html (resumen_flacs.html está bind-mounted como archivo suelto
+    # en Docker; "mv" falla con "Device or resource busy" porque no se puede
+    # unlink un punto de montaje - "cp" sí funciona ya que index.html es un
+    # archivo normal dentro del contenedor)
+    cp resumen_flacs.html index.html
     
 else
     echo "CSV sin cambios - no hay álbumes que eliminar"
