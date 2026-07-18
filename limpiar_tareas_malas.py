@@ -21,7 +21,11 @@ import requests
 from icalendar import Calendar
 from tools.sops_env import load_sops_env
 
-load_sops_env()
+try:
+    load_sops_env()
+except FileNotFoundError:
+    # En Docker las variables llegan ya descifradas vía docker-compose (scripts/up.sh)
+    pass
 
 RADICALE_URL   = os.getenv('RADICALE_URL',      '').rstrip('/')
 RADICALE_USER  = os.getenv('RADICALE_USERNAME', '')

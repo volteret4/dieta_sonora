@@ -6,7 +6,11 @@ import argparse
 from qbittorrentapi import Client
 from tools.sops_env import load_sops_env
 
-load_sops_env()
+try:
+    load_sops_env()
+except FileNotFoundError:
+    # En Docker las variables llegan ya descifradas vía docker-compose (scripts/up.sh)
+    pass
 
 # Configuración de conexión
 QB_HOST = os.getenv("QB_HOST", "localhost")

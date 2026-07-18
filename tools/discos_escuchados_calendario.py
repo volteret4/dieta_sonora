@@ -16,11 +16,17 @@ import argparse
 from datetime import datetime, timedelta
 from caldav import DAVClient
 from icalendar import Calendar
-from sops_env import load_sops_env
 import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from tools.sops_env import load_sops_env
 import pytz
 
-load_sops_env()
+try:
+    load_sops_env()
+except FileNotFoundError:
+    # En Docker las variables llegan ya descifradas vía docker-compose (scripts/up.sh)
+    pass
 
 
 # ==================== CONFIGURACIÓN ====================
