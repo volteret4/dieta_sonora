@@ -24,11 +24,38 @@ except FileNotFoundError:
     # En Docker las variables llegan ya descifradas vía docker-compose (scripts/up.sh)
     pass
 
+from airsonic_clean_csv import search_album_in_airsonic
+from qbittorrent_cleaner_csv import _album_in_torrent
+
 API_KEY      = os.getenv("ORPHEUS_APIKEY")
 BASE_URL     = "https://orpheus.network/ajax.php"
 JSON_FILE    = os.path.join(os.path.dirname(__file__), "resultado_flacs.json")
 CSV_FILE     = os.path.join(os.path.dirname(__file__), "albums.csv")
 HEADERS      = {"Authorization": API_KEY}
+
+QB_HOST = os.getenv("QB_HOST", "localhost")
+QB_PORT = os.getenv("QB_PORT", "8080")
+QB_USER = os.getenv("QB_USER", "admin")
+QB_PASS = os.getenv("QB_PASS", "adminadmin")
+
+
+def _qb_torrent_names() -> list[str]:
+    """Nombres de todos los torrents en qBittorrent, o [] si no está disponible."""
+    try:
+        from qbittorrentapi import Client
+        client = Client(host=QB_HOST, port=QB_PORT, username=QB_USER, password=QB_PASS)
+        client.auth_log_in()
+        return [t.name for t in client.torrents_info()]
+    except Exception as e:
+        print(f"⚠️  qBittorrent no disponible, se omite la comprobación: {e}")
+        return []
+
+
+def _ya_lo_tengo(artist: str, album: str, torrent_names: list[str]) -> bool:
+    """True si el álbum ya está en Airsonic o en qBittorrent (redundante)."""
+    if search_album_in_airsonic(artist, album):
+        return True
+    return any(_album_in_torrent(artist, album, t) for t in torrent_names)
 
 
 # ── Orpheus API ───────────────────────────────────────────────────────────────
@@ -163,8 +190,12 @@ def main():
         for r in csv_rows
     }
 
+    print("🔍 Comprobando qué discos del top ya tienes en qBittorrent/Airsonic...")
+    torrent_names = _qb_torrent_names()
+
     nuevos_json = 0
     nuevos_csv  = 0
+    omitidos    = 0
 
     for item in top:
         artist  = item["artist"]
@@ -172,6 +203,12 @@ def main():
         key     = f"{artist.lower()}|{album.lower()}"
 
         print(f"  🎵 {artist} — {album}")
+
+        # ── Omitir si ya lo tengo en Airsonic/qBittorrent (redundante) ────────
+        if key not in ya_en_json and _ya_lo_tengo(artist, album, torrent_names):
+            print("     ⏭️  Ya lo tienes en Airsonic/qBittorrent, se omite")
+            omitidos += 1
+            continue
 
         # ── Añadir al JSON ────────────────────────────────────────────────────
         if key not in ya_en_json:
@@ -239,7 +276,7 @@ def main():
 
         time.sleep(0.5)
 
-    print(f"\n{'[DRY RUN] ' if args.dry_run else ''}✅ Nuevos en JSON: {nuevos_json} | Nuevos en CSV: {nuevos_csv}")
+    print(f"\n{'[DRY RUN] ' if args.dry_run else ''}✅ Nuevos en JSON: {nuevos_json} | Nuevos en CSV: {nuevos_csv} | Omitidos (ya los tienes): {omitidos}")
 
 
 if __name__ == "__main__":

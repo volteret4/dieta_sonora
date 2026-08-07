@@ -479,6 +479,47 @@ def generar_html(json_data=None):
                 font-size: 16px;
             }
 
+            .tabs {
+                display: flex;
+                gap: 8px;
+                padding: 12px 20px 0;
+                background-color: var(--surface);
+                border-bottom: 2px solid var(--surface-2);
+            }
+            .tab-btn {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                background: transparent;
+                color: var(--text-muted);
+                border: none;
+                border-bottom: 3px solid transparent;
+                padding: 10px 6px 12px;
+                cursor: pointer;
+                font-size: 14px;
+                font-weight: 600;
+                transition: color 0.2s ease, border-color 0.2s ease;
+            }
+            .tab-btn:hover {
+                color: var(--text);
+            }
+            .tab-btn.active {
+                color: var(--accent);
+                border-bottom-color: var(--accent);
+            }
+            .tab-btn[data-tab="top10"].active {
+                color: var(--warning);
+                border-bottom-color: var(--warning);
+            }
+            .tab-count {
+                background: var(--surface-2);
+                color: var(--text);
+                font-size: 11px;
+                font-weight: 700;
+                padding: 2px 8px;
+                border-radius: 10px;
+            }
+
             /* Scrollbar personalizado */
             ::-webkit-scrollbar {
                 width: 10px;
@@ -727,6 +768,14 @@ def generar_html(json_data=None):
                         </button>
                     </div>
                 </div>
+                <div class="tabs" id="tabs">
+                    <button class="tab-btn active" data-tab="seguidos" onclick="switchTab('seguidos')">
+                        🎯 Seguidos <span class="tab-count" id="count-seguidos">0</span>
+                    </button>
+                    <button class="tab-btn" data-tab="top10" onclick="switchTab('top10')">
+                        🏆 Top 10 Orpheus <span class="tab-count" id="count-top10">0</span>
+                    </button>
+                </div>
                 <div class="albums-grid">
                     <p style="color:#7a8694;padding:20px">Cargando álbumes...</p>
                 </div>
@@ -742,8 +791,10 @@ def generar_html(json_data=None):
 
         <script>
             let currentSelected = null;
+            let currentTab = 'seguidos';
             window.torrentData = {};
             window.embedData = {};
+            window.allEntries = [];
 
             function showNotification(message, isError = false) {
                 const notification = document.getElementById('notification');
@@ -761,7 +812,7 @@ def generar_html(json_data=None):
 
                     window.torrentData = {};
                     window.embedData = {};
-                    grid.innerHTML = '';
+                    window.allEntries = [];
 
                     for (const album of data) {
                         for (const group of album.groups) {
@@ -772,35 +823,70 @@ def generar_html(json_data=None):
                                 bandcamp: album.bandcamp_embed || ''
                             };
 
-                            const years = (group.torrents || []).map(t => t.remasterYear).filter(Boolean);
-                            const oldestYear = years.length > 0 ? Math.min(...years) : 'Unknown';
-                            const flacCount = group.flacCount || 0;
-
                             const type = album.type || 'vevent';
-                            const badgeHtml =
-                                type === 'top10'  ? '<span class="album-type-badge badge-top10">top10</span>' :
-                                type === 'manual' ? '<span class="album-type-badge badge-manual">manual</span>' : '';
-
-                            const div = document.createElement('div');
-                            div.className = 'album type-' + type;
-                            div.id = 'album-' + groupId;
-                            div.onclick = () => showTorrents(groupId, album.artist, album.album, oldestYear, flacCount);
-                            div.innerHTML =
-                                badgeHtml +
-                                '<button class="delete-btn" onclick="deleteAlbum(' + groupId + ', event)" title="Eliminar álbum">×</button>' +
-                                '<img src="' + (group.cover || '') + '" alt="' + album.artist + ' - ' + album.album + '">' +
-                                '<div class="album-artist">' + album.artist + '</div>' +
-                                '<div class="album-name">' + album.album + '</div>' +
-                                '<div class="album-date">(' + oldestYear + ') · ' + flacCount + ' FLAC' + (flacCount !== 1 ? 's' : '') + '</div>';
-                            grid.appendChild(div);
+                            window.allEntries.push({ album, group, type });
                         }
                     }
 
-                    if (grid.children.length === 0) {
-                        grid.innerHTML = '<p style="color:#7a8694;padding:20px">No hay álbumes pendientes.</p>';
-                    }
+                    renderTabCounts();
+                    renderGrid();
                 } catch (e) {
                     grid.innerHTML = '<p style="color:#e74c3c;padding:20px">Error cargando álbumes: ' + e.message + '</p>';
+                }
+            }
+
+            function renderTabCounts() {
+                const top10Count = window.allEntries.filter(e => e.type === 'top10').length;
+                const seguidosCount = window.allEntries.length - top10Count;
+                document.getElementById('count-seguidos').textContent = seguidosCount;
+                document.getElementById('count-top10').textContent = top10Count;
+            }
+
+            function switchTab(tab) {
+                currentTab = tab;
+                document.querySelectorAll('.tab-btn').forEach(btn => {
+                    btn.classList.toggle('active', btn.dataset.tab === tab);
+                });
+                renderGrid();
+            }
+
+            function renderGrid() {
+                const grid = document.querySelector('.albums-grid');
+                grid.innerHTML = '';
+
+                const entries = window.allEntries.filter(e =>
+                    currentTab === 'top10' ? e.type === 'top10' : e.type !== 'top10'
+                );
+
+                for (const { album, group, type } of entries) {
+                    const groupId = group.groupId;
+                    const years = (group.torrents || []).map(t => t.remasterYear).filter(Boolean);
+                    const oldestYear = years.length > 0 ? Math.min(...years) : 'Unknown';
+                    const flacCount = group.flacCount || 0;
+
+                    const badgeHtml =
+                        type === 'top10'  ? '<span class="album-type-badge badge-top10">top10</span>' :
+                        type === 'manual' ? '<span class="album-type-badge badge-manual">manual</span>' : '';
+
+                    const div = document.createElement('div');
+                    div.className = 'album type-' + type;
+                    div.id = 'album-' + groupId;
+                    div.onclick = () => showTorrents(groupId, album.artist, album.album, oldestYear, flacCount);
+                    div.innerHTML =
+                        badgeHtml +
+                        '<button class="delete-btn" onclick="deleteAlbum(' + groupId + ', event)" title="Eliminar álbum">×</button>' +
+                        '<img src="' + (group.cover || '') + '" alt="' + album.artist + ' - ' + album.album + '">' +
+                        '<div class="album-artist">' + album.artist + '</div>' +
+                        '<div class="album-name">' + album.album + '</div>' +
+                        '<div class="album-date">(' + oldestYear + ') · ' + flacCount + ' FLAC' + (flacCount !== 1 ? 's' : '') + '</div>';
+                    grid.appendChild(div);
+                }
+
+                if (grid.children.length === 0) {
+                    const emptyMsg = currentTab === 'top10'
+                        ? 'No hay discos del Top 10 pendientes (o ya los tienes todos).'
+                        : 'No hay álbumes pendientes.';
+                    grid.innerHTML = '<p style="color:#7a8694;padding:20px">' + emptyMsg + '</p>';
                 }
             }
 
