@@ -1168,10 +1168,13 @@ def main():
     lastfm_conn: Optional[sqlite3.Connection] = None
     if os.path.exists(LASTFM_DB):
         # Solo lectura: lastfm_data se monta :ro en este servicio (lo rellena
-        # lastfm-scrobbles a diario), y PRAGMA journal_mode=WAL exige poder
-        # crear los ficheros -wal/-shm junto a la DB, lo que revienta con
-        # "unable to open database file" si el volumen es de solo lectura.
-        lastfm_conn = sqlite3.connect(f"file:{LASTFM_DB}?mode=ro", uri=True)
+        # lastfm-scrobbles a diario). mode=ro no basta -- la DB suele estar en
+        # journal_mode=WAL (la pone el escritor), y hasta un lector necesita
+        # abrir/crear el -shm junto a la DB para eso, lo que revienta con
+        # "unable to open database file" en un volumen de solo lectura.
+        # immutable=1 le dice a SQLite que confíe en que el archivo no
+        # cambiará durante la conexión y se salte esa comprobación.
+        lastfm_conn = sqlite3.connect(f"file:{LASTFM_DB}?mode=ro&immutable=1", uri=True)
         print(f"\n💾 Last.fm DB: {LASTFM_DB}")
     else:
         print(f"\n⚠️  Last.fm DB no encontrada en {LASTFM_DB!r} — se omitirá fecha de escucha")
