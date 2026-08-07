@@ -35,7 +35,10 @@ echo "── 2/4 qBittorrent checker (--since $SINCE) ──"
 "$PYTHON" qbittorrent_checker.py --since "$SINCE" "${DRY_RUN[@]}"
 
 echo "── 3/4 Sync calendario → music_stats.db (--since $SINCE) ──"
-"$PYTHON" cal_to_estadisticas.py --since "$SINCE" "${DRY_RUN[@]}"
+# --auto: sin esto, un álbum que MusicBrainz no encuentra hace que el script
+# pida la fecha de lanzamiento por input() -- sin stdin (cron/Ofelia) eso es
+# un EOFError inmediato que aborta todo el pipeline (set -e).
+"$PYTHON" cal_to_estadisticas.py --since "$SINCE" --auto "${DRY_RUN[@]}"
 
 echo "── 4/4 Exportando data.json ──"
 "$PYTHON" extraer_estadisticas.py --export-only
