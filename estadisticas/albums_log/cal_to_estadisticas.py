@@ -1167,8 +1167,11 @@ def main():
              "no_listen": 0, "airsonic_found": 0, "db_updated": 0}
     lastfm_conn: Optional[sqlite3.Connection] = None
     if os.path.exists(LASTFM_DB):
-        lastfm_conn = sqlite3.connect(LASTFM_DB)
-        lastfm_conn.execute("PRAGMA journal_mode=WAL")
+        # Solo lectura: lastfm_data se monta :ro en este servicio (lo rellena
+        # lastfm-scrobbles a diario), y PRAGMA journal_mode=WAL exige poder
+        # crear los ficheros -wal/-shm junto a la DB, lo que revienta con
+        # "unable to open database file" si el volumen es de solo lectura.
+        lastfm_conn = sqlite3.connect(f"file:{LASTFM_DB}?mode=ro", uri=True)
         print(f"\n💾 Last.fm DB: {LASTFM_DB}")
     else:
         print(f"\n⚠️  Last.fm DB no encontrada en {LASTFM_DB!r} — se omitirá fecha de escucha")
