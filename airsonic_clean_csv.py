@@ -185,14 +185,15 @@ def main():
         print(f"Error: No se encuentra el archivo {args.input_csv}", file=sys.stderr)
         sys.exit(1)
 
-    # Leer el CSV
+    # Leer el CSV (preservando todas las columnas, p.ej. "type")
     releases = []
     print(f"Leyendo {args.input_csv}...", file=sys.stderr)
     with open(args.input_csv, 'r', newline='', encoding='utf-8') as f:
-        reader = csv.reader(f)
+        reader = csv.DictReader(f)
+        fieldnames = reader.fieldnames or ['artist', 'album']
         for row in reader:
-            if len(row) >= 2:
-                releases.append((row[0], row[1]))
+            if row.get('artist') and row.get('album'):
+                releases.append(row)
 
     print(f"Encontrados {len(releases)} álbumes en el CSV", file=sys.stderr)
     print(f"Verificando en Airsonic ({AIRSONIC_URL})...\n", file=sys.stderr)
@@ -202,11 +203,12 @@ def main():
     found_count = 0
     missing_count = 0
 
-    for i, (artist, album) in enumerate(releases, 1):
+    for i, row in enumerate(releases, 1):
+        artist, album = row['artist'], row['album']
         print(f"[{i}/{len(releases)}] Verificando: {artist} - {album}...", end=' ', file=sys.stderr)
 
         found = search_album_in_airsonic(artist, album)
-        results.append((artist, album, found))
+        results.append((row, found))
 
         if found:
             print("✅ ENCONTRADO", file=sys.stderr)
@@ -218,28 +220,32 @@ def main():
     # Generar salida según el modo
     if args.mode == 'annotate':
         # Añadir columna con estado
+        out_fields = fieldnames + ['encontrado']
         with open(args.output, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            for artist, album, found in results:
-                writer.writerow([artist, album, 'Si' if found else 'No'])
+            writer = csv.DictWriter(f, fieldnames=out_fields)
+            writer.writeheader()
+            for row, found in results:
+                writer.writerow({**row, 'encontrado': 'Si' if found else 'No'})
         print(f"\n✓ CSV generado con columna de estado: {args.output}", file=sys.stderr)
 
     elif args.mode == 'missing':
         # Solo los que NO están en Airsonic
         with open(args.output, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            for artist, album, found in results:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for row, found in results:
                 if not found:
-                    writer.writerow([artist, album])
+                    writer.writerow(row)
         print(f"\n✓ CSV generado solo con álbumes faltantes: {args.output}", file=sys.stderr)
 
     elif args.mode == 'found':
         # Solo los que SÍ están en Airsonic
         with open(args.output, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            for artist, album, found in results:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for row, found in results:
                 if found:
-                    writer.writerow([artist, album])
+                    writer.writerow(row)
         print(f"\n✓ CSV generado solo con álbumes encontrados: {args.output}", file=sys.stderr)
 
     elif args.mode == 'split':
@@ -249,16 +255,18 @@ def main():
         missing_file = f"{base_name}_faltantes.csv"
 
         with open(found_file, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            for artist, album, found in results:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for row, found in results:
                 if found:
-                    writer.writerow([artist, album])
+                    writer.writerow(row)
 
         with open(missing_file, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            for artist, album, found in results:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for row, found in results:
                 if not found:
-                    writer.writerow([artist, album])
+                    writer.writerow(row)
 
         print(f"\n✓ CSVs generados:", file=sys.stderr)
         print(f"  - Encontrados: {found_file}", file=sys.stderr)
@@ -276,12 +284,13 @@ def main():
             shutil.copy2(args.input_csv, backup_file)
             print(f"\n✓ Backup creado: {backup_file}", file=sys.stderr)
 
-        # Escribir solo los álbumes NO encontrados
+        # Escribir solo los álbumes NO encontrados, preservando todas las columnas
         with open(output_file, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            for artist, album, found in results:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for row, found in results:
                 if not found:
-                    writer.writerow([artist, album])
+                    writer.writerow(row)
 
         print(f"\n✓ CSV editado (eliminados {found_count} álbumes que ya tienes): {output_file}", file=sys.stderr)
         if output_file == args.input_csv:
