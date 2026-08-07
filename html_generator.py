@@ -367,6 +367,9 @@ def generar_html(json_data=None):
                 margin-top: 50px;
                 font-size: 14px;
             }
+            .sidebar-close-btn {
+                display: none;
+            }
             .flac-table {
                 width: 100%;
                 border-collapse: collapse;
@@ -749,6 +752,139 @@ def generar_html(json_data=None):
                 background: var(--danger);
                 color: white;
             }
+
+            .table-scroll {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            /* ── Tablet (~768px) ── */
+            @media (max-width: 768px) {
+                body {
+                    display: block;
+                    height: auto;
+                    overflow-x: hidden;
+                    overflow-y: auto;
+                }
+                .main-container {
+                    flex-direction: column;
+                    width: 100%;
+                }
+                .albums-container {
+                    width: 100%;
+                    height: auto;
+                    overflow-y: visible;
+                    padding: 14px;
+                }
+                .tabs {
+                    padding: 10px 14px 0;
+                }
+                .sidebar {
+                    position: fixed;
+                    inset: 0;
+                    width: 100%;
+                    height: 100%;
+                    max-height: none;
+                    border-left: none;
+                    border-top: none;
+                    overflow-y: auto;
+                    padding: 16px;
+                    padding-top: 56px;
+                    z-index: 600;
+                    transform: translateX(100%);
+                    transition: transform 0.25s ease;
+                }
+                .sidebar.open {
+                    transform: translateX(0);
+                }
+                .sidebar-close-btn {
+                    display: flex;
+                    position: fixed;
+                    top: 10px;
+                    right: 10px;
+                    z-index: 601;
+                    width: 40px;
+                    height: 40px;
+                    border-radius: 50%;
+                    align-items: center;
+                    justify-content: center;
+                    background: var(--surface-2);
+                    color: var(--text);
+                    border: 1px solid var(--border);
+                    font-size: 20px;
+                    cursor: pointer;
+                }
+                .page-header {
+                    flex-wrap: wrap;
+                    gap: 10px;
+                    padding: 12px 14px;
+                }
+                .page-header h1 {
+                    font-size: 18px;
+                }
+                .header-actions {
+                    width: 100%;
+                    flex-wrap: wrap;
+                    gap: 8px;
+                }
+                .action-btn {
+                    flex: 1 1 auto;
+                    justify-content: center;
+                    min-height: 44px;
+                    padding: 10px 12px;
+                }
+                .albums-grid {
+                    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+                    gap: 12px;
+                }
+                .delete-btn {
+                    opacity: 1;
+                    width: 34px;
+                    height: 34px;
+                }
+                .download-btn {
+                    min-height: 40px;
+                    min-width: 44px;
+                    padding: 8px 14px;
+                }
+            }
+
+            /* ── Móvil (~375-480px) ── */
+            @media (max-width: 480px) {
+                .page-header h1 {
+                    font-size: 16px;
+                }
+                .header-actions {
+                    gap: 6px;
+                }
+                .action-btn {
+                    font-size: 12px;
+                    padding: 10px 8px;
+                }
+                .action-btn .btn-icon {
+                    font-size: 14px;
+                }
+                .albums-grid {
+                    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+                    gap: 10px;
+                }
+                .album-artist {
+                    font-size: 13px;
+                }
+                .album-name {
+                    font-size: 12px;
+                }
+                .flac-table {
+                    font-size: 11px;
+                }
+                .flac-table th,
+                .flac-table td {
+                    padding: 6px;
+                }
+                .lastfm-bio {
+                    max-height: 160px;
+                }
+            }
         </style>
     </head>
     <body>
@@ -892,6 +1028,15 @@ def generar_html(json_data=None):
 
             document.addEventListener('DOMContentLoaded', loadAlbums);
 
+            function closeSidebar() {
+                document.getElementById('sidebar').classList.remove('open');
+                if (currentSelected) {
+                    const prev = document.getElementById('album-' + currentSelected);
+                    if (prev) prev.classList.remove('selected');
+                }
+                currentSelected = null;
+            }
+
             function showTorrents(groupId, artist, albumName, year, flacCount) {
                 // Actualizar selección visual
                 if (currentSelected) {
@@ -902,13 +1047,16 @@ def generar_html(json_data=None):
 
                 const torrents = window.torrentData[groupId];
                 const sidebar = document.getElementById('sidebar');
+                sidebar.classList.add('open');
 
                 let tableHtml = `
+                    <button class="sidebar-close-btn" onclick="closeSidebar()" title="Cerrar" aria-label="Cerrar">×</button>
                     <div class="album-header">
                         <h3>${artist}</h3>
                         <p>${albumName} (${year})</p>
                         <p>${flacCount} torrent${flacCount > 1 ? 's' : ''} FLAC disponible${flacCount > 1 ? 's' : ''}</p>
                     </div>
+                    <div class="table-scroll">
                     <table class="flac-table">
                         <thead>
                             <tr>
@@ -951,6 +1099,7 @@ def generar_html(json_data=None):
                 tableHtml += `
                         </tbody>
                     </table>
+                    </div>
                 `;
 
                 // Embeds de YouTube y Bandcamp

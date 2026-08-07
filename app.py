@@ -613,16 +613,19 @@ def copiar_album():
         return jsonify({"error": "Origen no existe"}), 404
 
     try:
-        # 1. Obtener Metadatos FLAC
-        archivos_en_carpeta = os.listdir(ruta_origen)
-        # Filtramos los archivos que terminen en .flac (sin importar mayúsculas/minúsculas)
-        flac_files = [f for f in archivos_en_carpeta if f.lower().endswith('.flac')]
+        # 1. Obtener Metadatos FLAC (busca recursivamente: soporta discos multi-CD
+        # con los FLAC en subcarpetas tipo CD1/CD2)
+        primer_flac = None
+        for _root, _dirs, _files in os.walk(ruta_origen):
+            for _f in sorted(_files):
+                if _f.lower().endswith('.flac'):
+                    primer_flac = os.path.join(_root, _f)
+                    break
+            if primer_flac:
+                break
 
-        if not flac_files:
+        if not primer_flac:
             return jsonify({"error": f"No hay archivos FLAC en {ruta_origen}"}), 400
-
-        # Construimos la ruta completa para el primer archivo encontrado
-        primer_flac = os.path.join(ruta_origen, flac_files[0])
         audio = FLAC(primer_flac)
         artist = audio.get('albumartist', audio.get('artist', ['Unknown Artist']))[0]
         album_name = audio.get('album', ['Unknown Album'])[0]
