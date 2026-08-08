@@ -241,6 +241,26 @@ def put_ical(href: str, ical_text: str, cal_name: Optional[str] = None) -> bool:
     return True
 
 
+def _find_vtodo(cal: Calendar):
+    """
+    Localiza el componente VTODO de un Calendar para mutarlo in place.
+
+    IMPORTANTE: no reconstruir el Calendar iterando cal.walk() y volviendo a
+    añadir cada componente a un Calendar() nuevo -- walk() aplana también los
+    subcomponentes anidados (p.ej. VALARM, que DAVx5/Tasks.org añade siempre
+    a sus VTODO), así que ese patrón los duplica como hermanos de nivel
+    superior en vez de dejarlos anidados dentro del VTODO. Eso produce iCal
+    inválido y Radicale lo rechaza con HTTP 400 -- son tareas reales del
+    usuario, no basura, así que este bug las dejaba siempre desactualizadas.
+    Mutar el componente encontrado aquí y llamar a cal.to_ical() directamente
+    conserva la estructura anidada intacta.
+    """
+    for comp in cal.walk():
+        if hasattr(comp, "name") and comp.name == "VTODO":
+            return comp
+    return None
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 #  PARSEO DE ÍTEMS iCAL
 # ─────────────────────────────────────────────────────────────────────────────
@@ -381,19 +401,14 @@ def fix_missing_dtstart(tasks: dict, dry_run: bool) -> int:
             print(f"     ⚠️  Error parseando iCal: {e}")
             continue
 
-        updated_cal = Calendar()
-        for k, v in cal.items():
-            updated_cal.add(k, v)
+        comp = _find_vtodo(cal)
+        if comp is None:
+            print("     ⚠️  No se encontró el VTODO en el iCal")
+            continue
+        comp.add("DTSTART", new_start)
+        comp["LAST-MODIFIED"] = vDatetime(datetime.now(tz=timezone.utc))
 
-        for comp in cal.walk():
-            if hasattr(comp, "name") and comp.name == "VTODO":
-                comp.add("DTSTART", new_start)
-                comp["LAST-MODIFIED"] = vDatetime(datetime.now(tz=timezone.utc))
-                updated_cal.add_component(comp)
-            elif hasattr(comp, "name") and comp.name != "VCALENDAR":
-                updated_cal.add_component(comp)
-
-        ical_text = updated_cal.to_ical().decode("utf-8")
+        ical_text = cal.to_ical().decode("utf-8")
         if put_ical(task["href"], ical_text, cal_name=CALENDAR_TASKS):
             task["has_dtstart"]   = True
             task["purchase_date"] = new_start.isoformat()
@@ -438,19 +453,14 @@ def fix_missing_due(tasks: dict, dry_run: bool) -> int:
             print(f"     ⚠️  Error parseando iCal: {e}")
             continue
 
-        updated_cal = Calendar()
-        for k, v in cal.items():
-            updated_cal.add(k, v)
+        comp = _find_vtodo(cal)
+        if comp is None:
+            print("     ⚠️  No se encontró el VTODO en el iCal")
+            continue
+        comp.add("DUE", new_due)
+        comp["LAST-MODIFIED"] = vDatetime(datetime.now(tz=timezone.utc))
 
-        for comp in cal.walk():
-            if hasattr(comp, "name") and comp.name == "VTODO":
-                comp.add("DUE", new_due)
-                comp["LAST-MODIFIED"] = vDatetime(datetime.now(tz=timezone.utc))
-                updated_cal.add_component(comp)
-            elif hasattr(comp, "name") and comp.name != "VCALENDAR":
-                updated_cal.add_component(comp)
-
-        ical_text = updated_cal.to_ical().decode("utf-8")
+        ical_text = cal.to_ical().decode("utf-8")
         if put_ical(task["href"], ical_text, cal_name=CALENDAR_TASKS):
             task["due"]      = new_due.isoformat()
             task["ical_text"] = ical_text
@@ -469,25 +479,21 @@ def update_vtodo_completed(task: dict, listened_date: date) -> bool:
         print(f"    ⚠️  Error parseando VTODO: {e}")
         return False
 
-    updated_cal = Calendar()
-    for k, v in cal.items():
-        updated_cal.add(k, v)
+    comp = _find_vtodo(cal)
+    if comp is None:
+        print("    ⚠️  No se encontró el VTODO en el iCal")
+        return False
 
-    for comp in cal.walk():
-        if hasattr(comp, "name") and comp.name == "VTODO":
-            comp["STATUS"] = vText("COMPLETED")
-            listened_dt = datetime.combine(
-                listened_date, datetime.min.time(), tzinfo=timezone.utc)
-            if "COMPLETED" not in comp:
-                comp.add("COMPLETED", listened_dt)
-            else:
-                comp["COMPLETED"] = vDatetime(listened_dt)
-            comp["LAST-MODIFIED"] = vDatetime(datetime.now(tz=timezone.utc))
-            updated_cal.add_component(comp)
-        elif hasattr(comp, "name") and comp.name != "VCALENDAR":
-            updated_cal.add_component(comp)
+    comp["STATUS"] = vText("COMPLETED")
+    listened_dt = datetime.combine(
+        listened_date, datetime.min.time(), tzinfo=timezone.utc)
+    if "COMPLETED" not in comp:
+        comp.add("COMPLETED", listened_dt)
+    else:
+        comp["COMPLETED"] = vDatetime(listened_dt)
+    comp["LAST-MODIFIED"] = vDatetime(datetime.now(tz=timezone.utc))
 
-    return put_ical(task["href"], updated_cal.to_ical().decode("utf-8"), cal_name=CALENDAR_TASKS)
+    return put_ical(task["href"], cal.to_ical().decode("utf-8"), cal_name=CALENDAR_TASKS)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1299,23 +1305,18 @@ def main():
                 if not args.dry_run and task.get("ical_text"):
                     try:
                         cal = Calendar.from_ical(task["ical_text"])
-                        updated_cal = Calendar()
-                        for k, v in cal.items():
-                            updated_cal.add(k, v)
-                        for comp in cal.walk():
-                            if hasattr(comp, "name") and comp.name == "VTODO":
-                                comp["DTSTART"] = vDatetime(
-                                    datetime.combine(airsonic_date,
-                                                     datetime.min.time(),
-                                                     tzinfo=timezone.utc)
-                                )
-                                comp["LAST-MODIFIED"] = vDatetime(
-                                    datetime.now(tz=timezone.utc))
-                                comp["X-PURCHASE-SOURCE"] = vText("airsonic")
-                                updated_cal.add_component(comp)
-                            elif hasattr(comp, "name") and comp.name != "VCALENDAR":
-                                updated_cal.add_component(comp)
-                        new_ical = updated_cal.to_ical().decode("utf-8")
+                        comp = _find_vtodo(cal)
+                        if comp is None:
+                            raise ValueError("No se encontró el VTODO en el iCal")
+                        comp["DTSTART"] = vDatetime(
+                            datetime.combine(airsonic_date,
+                                             datetime.min.time(),
+                                             tzinfo=timezone.utc)
+                        )
+                        comp["LAST-MODIFIED"] = vDatetime(
+                            datetime.now(tz=timezone.utc))
+                        comp["X-PURCHASE-SOURCE"] = vText("airsonic")
+                        new_ical = cal.to_ical().decode("utf-8")
                         if put_ical(task["href"], new_ical, cal_name=CALENDAR_TASKS):
                             task["ical_text"]     = new_ical
                             task["purchase_date"] = airsonic_date.isoformat()
