@@ -80,6 +80,7 @@ CREATE TABLE IF NOT EXISTS albums (
     listened_date             TEXT,
     days_release_to_purchase  INTEGER,
     days_purchase_to_listened INTEGER,
+    purchase_date_estimated   INTEGER NOT NULL DEFAULT 0,
     UNIQUE(artist_id, name_normalized)
 );
 """
@@ -100,6 +101,14 @@ def _normalize(s: str) -> str:
 
 def init_db(conn: sqlite3.Connection):
     conn.executescript(SCHEMA)
+    # Migración: purchase_date_estimated se añadió después de que hubiera DBs
+    # ya desplegadas -- CREATE TABLE IF NOT EXISTS no toca una tabla existente.
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(albums)")}
+    if "purchase_date_estimated" not in cols:
+        conn.execute(
+            "ALTER TABLE albums ADD COLUMN purchase_date_estimated "
+            "INTEGER NOT NULL DEFAULT 0"
+        )
     conn.commit()
 
 
@@ -651,7 +660,8 @@ def export_json(conn: sqlite3.Connection, path: str):
             al.purchase_date,
             al.listened_date,
             al.days_release_to_purchase,
-            al.days_purchase_to_listened
+            al.days_purchase_to_listened,
+            al.purchase_date_estimated
         FROM   albums  al
         JOIN   artists ar ON ar.artist_id = al.artist_id
         LEFT   JOIN genres  g  ON g.genre_id  = al.genre_id

@@ -141,6 +141,11 @@ def create_vtodo(artist: str, album: str, purchase_date: date) -> str | None:
     todo.add('STATUS',  'NEEDS-ACTION')
     todo.add('DTSTAMP', datetime.now(tz=timezone.utc))
     todo.add('CREATED', datetime.now(tz=timezone.utc))
+    # Marca que este DTSTART es una estimación (fecha "created" de Airsonic,
+    # que refleja cuándo se escaneó/reimportó la biblioteca, no cuándo se
+    # adquirió realmente el álbum) -- cal_to_estadisticas.py la usa para no
+    # tratarla como si fuera una fecha de compra real.
+    todo.add('X-PURCHASE-SOURCE', 'airsonic')
     cal.add_component(todo)
     ical_text = cal.to_ical().decode('utf-8')
     href = f'{RADICALE_BASE}/{CALENDAR_TASKS}/{uid}.ics'

@@ -345,6 +345,15 @@
                 color: var(--text-dim);
                 border: 1px solid var(--border);
             }
+            .badge-error {
+                background: var(--surface-2);
+                color: var(--danger);
+                border: 1px solid var(--danger);
+            }
+            .date-estimated {
+                border-bottom: 1px dotted var(--text-dim);
+                cursor: help;
+            }
 
             /* ── LOADING / ERROR ── */
             .center-msg {
@@ -527,14 +536,31 @@
                         { className: "badge badge-na" },
                         "—",
                     );
-                const cls = v <= 14 ? "badge-ok" : "badge-warn";
+                // Negativo = escuchado antes de "comprado": dato roto, no un
+                // tránsito rápido -- badge-ok con "-Nd" leía como algo bueno.
+                const cls = v < 0 ? "badge-error" : v <= 14 ? "badge-ok" : "badge-warn";
                 return React.createElement(
                     "span",
-                    { className: `badge ${cls}` },
+                    { className: `badge ${cls}`, title: v < 0 ? "Escuchado antes de la fecha de compra registrada" : undefined },
                     `${v}d`,
                 );
             };
             const fmtDate = (d) => (d ? d.slice(0, 10) : "—");
+            // purchase_date_estimated: el DTSTART vino de Airsonic/qBittorrent
+            // (created/added_on), no de una compra real -- se marca con "~" y
+            // un tooltip para no confundirla con una fecha registrada a mano.
+            const fmtPurchaseDate = (a) => {
+                const text = fmtDate(a.purchase_date);
+                if (!a.purchase_date || !a.purchase_date_estimated) return text;
+                return React.createElement(
+                    "span",
+                    {
+                        className: "date-estimated",
+                        title: "Estimada a partir de Airsonic/qBittorrent, no es una fecha de compra registrada",
+                    },
+                    `~${text}`,
+                );
+            };
 
             // ── CUSTOM TOOLTIP ───────────────────────────
             function CT({ active, payload, label }) {
@@ -1196,7 +1222,7 @@
                                             React.createElement(
                                                 "td",
                                                 { className: "td-date" },
-                                                fmtDate(a.purchase_date),
+                                                fmtPurchaseDate(a),
                                             ),
                                             React.createElement(
                                                 "td",

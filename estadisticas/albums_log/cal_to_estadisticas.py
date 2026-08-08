@@ -313,20 +313,25 @@ def parse_tasks(raw_items: list[dict]) -> dict:
             completed = parse_date_value(comp.get("COMPLETED"))
             due       = parse_date_value(comp.get("DUE"))
             status    = str(comp.get("STATUS", "")).upper()
+            # Presente cuando airsonic_checker.py/qbittorrent_checker.py (o este
+            # propio script, paso 6b) fabricó el DTSTART a partir de un "created"/
+            # "added_on" ajeno, no de una compra real registrada por el usuario.
+            purchase_source = str(comp.get("X-PURCHASE-SOURCE", "")).strip() or None
 
             key = (_normalize(artist), _normalize(album))
             tasks[key] = {
-                "artist":        artist,
-                "album":         album,
-                "purchase_date": (dt_start or due or None) and
-                                 (dt_start or due).isoformat(),
-                "listened_date": completed.isoformat() if completed else None,
-                "completed":     completed is not None or status == "COMPLETED",
-                "href":          item["href"],
-                "uid":           str(comp.get("UID", "")),
-                "ical_text":     item["ical_text"],
-                "has_dtstart":   dt_start is not None,
-                "due":           due.isoformat() if due else None,
+                "artist":          artist,
+                "album":           album,
+                "purchase_date":   (dt_start or due or None) and
+                                   (dt_start or due).isoformat(),
+                "purchase_source": purchase_source,
+                "listened_date":   completed.isoformat() if completed else None,
+                "completed":       completed is not None or status == "COMPLETED",
+                "href":            item["href"],
+                "uid":             str(comp.get("UID", "")),
+                "ical_text":       item["ical_text"],
+                "has_dtstart":     dt_start is not None,
+                "due":             due.isoformat() if due else None,
             }
     return tasks
 
@@ -960,6 +965,7 @@ CREATE TABLE IF NOT EXISTS albums (
     listened_date             TEXT,
     days_release_to_purchase  INTEGER,
     days_purchase_to_listened INTEGER,
+    purchase_date_estimated   INTEGER NOT NULL DEFAULT 0,
     UNIQUE(artist_id, name_normalized)
 );
 """
@@ -967,17 +973,36 @@ CREATE TABLE IF NOT EXISTS albums (
 
 def init_db(conn: sqlite3.Connection):
     conn.executescript(SCHEMA)
+    # Migración: purchase_date_estimated se añadió después de que hubiera DBs
+    # ya desplegadas -- CREATE TABLE IF NOT EXISTS no toca una tabla existente.
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(albums)")}
+    if "purchase_date_estimated" not in cols:
+        conn.execute(
+            "ALTER TABLE albums ADD COLUMN purchase_date_estimated "
+            "INTEGER NOT NULL DEFAULT 0"
+        )
     conn.commit()
 
 
 def _sanitize_chain(release_date:  Optional[str],
                     purchase_date: Optional[str],
-                    listened_date: Optional[str]) -> tuple[Optional[str], Optional[str], Optional[str]]:
+                    listened_date: Optional[str],
+                    purchase_estimated: bool = False) -> tuple[Optional[str], Optional[str], Optional[str]]:
     """
     Garantiza que la cadena release ≤ purchase ≤ listened.
     Cualquier fecha que sea anterior a release_date se descarta (se deja None).
     Esto evita que reediciones/remasters con fecha reciente sobreescriban
     fechas de compra o escucha que son legítimamente anteriores al re-lanzamiento.
+
+    Además, si purchase_date es una estimación (viene de airsonic_checker.py /
+    qbittorrent_checker.py, no de una compra registrada por el usuario) y es
+    posterior a una escucha ya conocida, se descarta -- esa fecha "created"/
+    "added_on" no refleja cuándo se adquirió realmente el álbum (p.ej. tras
+    un reescaneo de la biblioteca), así que es mejor no tener purchase_date
+    que fabricar una cadena imposible (escuchado antes de "comprado").
+    Una purchase_date NO estimada que sea posterior a la escucha se conserva
+    tal cual -- ahí sí puede ser real (p.ej. compraste un remaster de algo
+    que ya conocías por otra vía).
     """
     ref = release_date  # ancla: todo lo que venga antes, fuera
 
@@ -991,6 +1016,14 @@ def _sanitize_chain(release_date:  Optional[str],
 
     clean_purchase = after_or_none(purchase_date)
     clean_listened = after_or_none(listened_date)
+
+    if purchase_estimated and clean_purchase and clean_listened:
+        try:
+            if date.fromisoformat(clean_listened) < date.fromisoformat(clean_purchase):
+                clean_purchase = None
+        except ValueError:
+            pass
+
     return release_date, clean_purchase, clean_listened
 
 
@@ -998,10 +1031,11 @@ def upsert_album(conn: sqlite3.Connection,
                  artist: str, album: str,
                  release_date:  Optional[str],
                  purchase_date: Optional[str],
-                 listened_date: Optional[str]):
+                 listened_date: Optional[str],
+                 purchase_estimated: bool = False):
     """Inserta o actualiza el álbum en music_stats.db."""
     release_date, purchase_date, listened_date = _sanitize_chain(
-        release_date, purchase_date, listened_date
+        release_date, purchase_date, listened_date, purchase_estimated
     )
     if purchase_date is None and listened_date is None and release_date is None:
         return  # nada útil que guardar
@@ -1021,43 +1055,51 @@ def upsert_album(conn: sqlite3.Connection,
         ).lastrowid
 
     existing = conn.execute(
-        """SELECT album_id, release_date, purchase_date, listened_date
+        """SELECT album_id, release_date, purchase_date, listened_date, purchase_date_estimated
            FROM albums WHERE artist_id = ? AND name_normalized = ?""",
         (artist_id, album_key)
     ).fetchone()
 
+    # Si purchase_date sigue vivo tras _sanitize_chain, su "estimated-ness"
+    # es la de esta llamada; si se cayó de vuelta al valor previo (o no hay
+    # ninguno nuevo), se conserva el flag que ya tuviera guardado.
     if existing is None:
         conn.execute(
             """INSERT INTO albums
                (artist_id, name, name_normalized,
                 release_date, purchase_date, listened_date,
-                days_release_to_purchase, days_purchase_to_listened)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                days_release_to_purchase, days_purchase_to_listened,
+                purchase_date_estimated)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 artist_id, album, album_key,
                 release_date, purchase_date, listened_date,
                 days_between(release_date, purchase_date),
                 days_between(purchase_date, listened_date),
+                int(bool(purchase_date) and purchase_estimated),
             )
         )
     else:
-        al_id, old_rel, old_pur, old_lis = existing
+        al_id, old_rel, old_pur, old_lis, old_pur_est = existing
         new_rel = release_date  or old_rel
         new_pur = purchase_date or old_pur
         new_lis = listened_date or old_lis
-        if (new_rel, new_pur, new_lis) != (old_rel, old_pur, old_lis):
+        new_pur_est = purchase_estimated if purchase_date else bool(old_pur_est)
+        if (new_rel, new_pur, new_lis, new_pur_est) != (old_rel, old_pur, old_lis, bool(old_pur_est)):
             conn.execute(
                 """UPDATE albums SET
                    release_date              = ?,
                    purchase_date             = ?,
                    listened_date             = ?,
                    days_release_to_purchase  = ?,
-                   days_purchase_to_listened = ?
+                   days_purchase_to_listened = ?,
+                   purchase_date_estimated   = ?
                    WHERE album_id = ?""",
                 (
                     new_rel, new_pur, new_lis,
                     days_between(new_rel, new_pur),
                     days_between(new_pur, new_lis),
+                    int(new_pur_est),
                     al_id,
                 )
             )
@@ -1193,6 +1235,9 @@ def main():
         purchase_date = task.get("purchase_date")   # DTSTART del VTODO
         listened_date = task.get("listened_date")   # COMPLETED del VTODO
         is_completed  = task.get("completed", False)
+        # True si el DTSTART actual viene de airsonic_checker.py/qbittorrent_checker.py
+        # (created/added_on ajeno) y no de una compra real registrada por el usuario.
+        purchase_estimated = task.get("purchase_source") in ("airsonic", "qbittorrent")
 
         # Filtrar por rango de fechas (purchase_date como referencia)
         if purchase_date and since_date != date.min:
@@ -1242,7 +1287,14 @@ def main():
         if not purchase_date and AIRSONIC_URL:
             print(f"    🔍 Sin DTSTART/purchase → consultando Airsonic...")
             airsonic_date = search_airsonic(artist, album)
-            if airsonic_date:
+            if airsonic_date and listened_date and airsonic_date.isoformat() > listened_date:
+                # El "created" de Airsonic es posterior a una escucha ya conocida
+                # (Last.fm) -- no es una fecha de compra fiable, probablemente un
+                # reescaneo de biblioteca. Mejor sin purchase_date que una cadena
+                # imposible (escuchado antes de "comprado").
+                print(f"    ⚠️  Airsonic: {airsonic_date.isoformat()} es posterior a la "
+                      f"escucha conocida ({listened_date}) — se ignora como fecha de compra")
+            elif airsonic_date:
                 print(f"    🛒 Airsonic: añadido el {airsonic_date.isoformat()}")
                 if not args.dry_run and task.get("ical_text"):
                     try:
@@ -1259,6 +1311,7 @@ def main():
                                 )
                                 comp["LAST-MODIFIED"] = vDatetime(
                                     datetime.now(tz=timezone.utc))
+                                comp["X-PURCHASE-SOURCE"] = vText("airsonic")
                                 updated_cal.add_component(comp)
                             elif hasattr(comp, "name") and comp.name != "VCALENDAR":
                                 updated_cal.add_component(comp)
@@ -1268,20 +1321,23 @@ def main():
                             task["purchase_date"] = airsonic_date.isoformat()
                             task["has_dtstart"]   = True
                             purchase_date         = airsonic_date.isoformat()
+                            purchase_estimated    = True
                             print(f"    ✅ VTODO DTSTART actualizado con fecha Airsonic")
                     except Exception as e:
                         print(f"    ⚠️  Error actualizando VTODO con fecha Airsonic: {e}")
                     append_to_csv(STORE_CSV, artist, album, airsonic_date.isoformat())
                 elif args.dry_run:
                     print(f"    [DRY RUN] pondría DTSTART={airsonic_date.isoformat()} en VTODO")
-                    purchase_date = airsonic_date.isoformat()
+                    purchase_date      = airsonic_date.isoformat()
+                    purchase_estimated = True
                 stats["airsonic_found"] += 1
             else:
                 print(f"    ℹ️  No encontrado en Airsonic")
 
         # ── 6c. Actualizar DB con lo que tenemos del VTODO ───────────────────
         upsert_album(music_conn, artist, album,
-                     release_date, purchase_date, listened_date)
+                     release_date, purchase_date, listened_date,
+                     purchase_estimated=purchase_estimated)
         music_conn.commit()
         stats["db_updated"] += 1
 
@@ -1317,7 +1373,8 @@ def main():
                 print(f"    ✅ VTODO marcado COMPLETED")
                 stats["listened_updated"] += 1
                 upsert_album(music_conn, artist, album,
-                             release_date, purchase_date, first_listen.isoformat())
+                             release_date, purchase_date, first_listen.isoformat(),
+                             purchase_estimated=purchase_estimated)
                 music_conn.commit()
         elif args.dry_run:
             print(f"    [DRY RUN] pondría COMPLETED={first_listen.isoformat()}")

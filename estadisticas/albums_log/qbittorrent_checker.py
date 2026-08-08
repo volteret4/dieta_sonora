@@ -138,6 +138,11 @@ def create_vtodo(artist: str, album: str, purchase_date: date) -> str | None:
     todo.add('STATUS',  'NEEDS-ACTION')
     todo.add('DTSTAMP', datetime.now(tz=timezone.utc))
     todo.add('CREATED', datetime.now(tz=timezone.utc))
+    # Marca que este DTSTART es una estimación (added_on de qBittorrent, que
+    # refleja cuándo se añadió el torrent, no necesariamente cuándo se
+    # adquirió el álbum) -- cal_to_estadisticas.py la usa para no tratarla
+    # como si fuera una fecha de compra real.
+    todo.add('X-PURCHASE-SOURCE', 'qbittorrent')
     cal.add_component(todo)
     ical_text = cal.to_ical().decode('utf-8')
     href = f'{RADICALE_BASE}/{CALENDAR_TASKS}/{uid}.ics'
