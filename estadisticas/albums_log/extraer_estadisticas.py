@@ -1,21 +1,23 @@
 #!/usr/bin/env python3
 """
-Music Calendar Extractor
-Extracts data from Radicale (CalDAV) + store CSV + MusicBrainz
-and stores everything in SQLite, then exports data.json for the dashboard.
+Genre Enricher
+Reads albums already synced into music_stats.db by cal_to_estadisticas.py
+(release_date/listened_date come from Radicale there) and fills in genre_id
+via MusicBrainz/Last.fm for whichever ones don't have one yet, then exports
+data.json for the dashboard.
 
 Usage:
-    pip install caldav icalendar requests
-    python extract.py
+    pip install requests
+    python extraer_estadisticas.py               # fetch genres + export
+    python extraer_estadisticas.py --export-only  # just export, no API calls
 """
 import argparse
 import sqlite3
-import csv
 import json
 import time
 import re
 import os
-from datetime import datetime, date
+from datetime import datetime
 from typing import Optional
 from dotenv import load_dotenv
 import requests
@@ -25,11 +27,6 @@ load_dotenv()
 # ─────────────────────────────────────────────
 #  CONFIGURATION — edit these values
 # ─────────────────────────────────────────────
-RADICALE_URL      = os.getenv("RADICALE_URL")
-RADICALE_USER     = os.getenv("RADICALE_USERNAME")
-RADICALE_PASSWORD = os.getenv("RADICALE_PW")
-CALENDAR_PATH     = ""    # path within Radicale
-
 DB_PATH           = "music_stats.db"
 JSON_PATH         = "data.json"  # nombre que de verdad fetchea la web (antes "stats.json", nunca lo leía nadie)
 
@@ -154,164 +151,6 @@ def link_artist_genre(conn: sqlite3.Connection, artist_id: int, genre_id: int):
         "INSERT OR IGNORE INTO artist_genres (artist_id, genre_id) VALUES (?, ?)",
         (artist_id, genre_id)
     )
-
-# ─────────────────────────────────────────────
-#  CALDAV FETCHING
-# ─────────────────────────────────────────────
-
-def fetch_caldav_raw() -> str:
-    """Download the full calendar .ics via GET (Radicale supports this)."""
-    url = RADICALE_URL.rstrip("/") + CALENDAR_PATH
-    r = requests.get(url, auth=(RADICALE_USER, RADICALE_PASSWORD), timeout=30)
-    r.raise_for_status()
-    return r.text
-
-def fetch_caldav_items() -> list[dict]:
-    """
-    Use REPORT to get all VEVENT and VTODO from the calendar.
-    Returns list of raw icalendar component texts.
-    """
-    url = RADICALE_URL.rstrip("/") + CALENDAR_PATH
-    body = """<?xml version="1.0" encoding="UTF-8"?>
-<C:calendar-query xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
-  <D:prop>
-    <D:getetag/>
-    <C:calendar-data/>
-  </D:prop>
-  <C:filter>
-    <C:comp-filter name="VCALENDAR"/>
-  </C:filter>
-</C:calendar-query>"""
-
-    headers = {
-        "Depth": "1",
-        "Content-Type": "application/xml; charset=utf-8",
-    }
-    r = requests.request(
-        "REPORT", url,
-        data=body.encode("utf-8"),
-        headers=headers,
-        auth=(RADICALE_USER, RADICALE_PASSWORD),
-        timeout=30,
-    )
-    r.raise_for_status()
-
-    # Extract calendar-data blocks from the XML response
-    from xml.etree import ElementTree as ET
-    root = ET.fromstring(r.content)
-    ns = {
-        "D": "DAV:",
-        "C": "urn:ietf:params:xml:ns:caldav",
-    }
-    items = []
-    for resp in root.findall(".//D:response", ns):
-        cal_data = resp.find(".//C:calendar-data", ns)
-        if cal_data is not None and cal_data.text:
-            items.append(cal_data.text)
-    return items
-
-# ─────────────────────────────────────────────
-#  ICALENDAR PARSING
-# ─────────────────────────────────────────────
-
-def parse_date(dt_value) -> Optional[str]:
-    """Convert icalendar date/datetime to ISO string."""
-    if dt_value is None:
-        return None
-    if hasattr(dt_value, 'dt'):
-        dt_value = dt_value.dt
-    if isinstance(dt_value, datetime):
-        return dt_value.date().isoformat()
-    if isinstance(dt_value, date):
-        return dt_value.isoformat()
-    return str(dt_value)
-
-def strip_non_text(s: str) -> str:
-    """
-    Remove leading/trailing emojis, symbols and extra whitespace.
-    Covers emoji blocks, dingbats, misc symbols (💿 📀 🎵 etc.)
-    """
-    return re.sub(
-        r'^[\U00010000-\U0010ffff\u2000-\u2BFF\u2600-\u26FF\u2700-\u27BF\s]+'
-        r'|[\U00010000-\U0010ffff\u2000-\u2BFF\u2600-\u26FF\u2700-\u27BF\s]+$',
-        '', s
-    ).strip()
-
-
-def parse_summary(summary: str) -> tuple[str, str]:
-    """Split 'Artist - Album' → (artist, album). Strips leading/trailing emojis."""
-    summary = strip_non_text(summary)
-    parts = re.split(r'\s+[-–—]\s+', summary, maxsplit=1)
-    if len(parts) == 2:
-        return strip_non_text(parts[0]), strip_non_text(parts[1])
-    return summary, ""
-
-def parse_calendar_items(raw_items: list[str]) -> tuple[dict, dict]:
-    """
-    Returns:
-        events: {(artist, album): release_date}
-        tasks:  {(artist, album): {"listened_date": ...}}
-    """
-    try:
-        from icalendar import Calendar
-    except ImportError:
-        raise ImportError("Run: pip install icalendar")
-
-    events = {}
-    tasks  = {}
-
-    for raw in raw_items:
-        try:
-            cal = Calendar.from_ical(raw)
-        except Exception as e:
-            print(f"  ⚠ Could not parse calendar item: {e}")
-            continue
-
-        for component in cal.walk():
-            ctype = component.name
-
-            if ctype == "VEVENT":
-                summary = str(component.get("SUMMARY", ""))
-                artist, album = parse_summary(summary)
-                if not album:
-                    continue
-                release_date = parse_date(component.get("DTSTART"))
-                events[(artist.lower(), album.lower())] = {
-                    "artist": artist,
-                    "album": album,
-                    "release_date": release_date,
-                }
-
-            elif ctype == "VTODO":
-                summary = str(component.get("SUMMARY", ""))
-                artist, album = parse_summary(summary)
-                if not album:
-                    continue
-
-                status = str(component.get("STATUS", "")).upper()
-                # Task completed = listened date
-                # Some CalDAV clients set STATUS=COMPLETED but omit the COMPLETED
-                # property, so we fall back to LAST-MODIFIED or DTSTAMP.
-                listened_date = None
-                if status == "COMPLETED":
-                    listened_date = (
-                        parse_date(component.get("COMPLETED"))
-                        or parse_date(component.get("LAST-MODIFIED"))
-                        or parse_date(component.get("DTSTAMP"))
-                    )
-
-                tasks[(artist.lower(), album.lower())] = {
-                    "artist": artist,
-                    "album": album,
-                    "listened_date": listened_date,
-                }
-
-    return events, tasks
-
-# ─────────────────────────────────────────────
-#  CSV PARSING
-# ─────────────────────────────────────────────
-
 
 # ─────────────────────────────────────────────
 #  MUSICBRAINZ GENRE LOOKUP
@@ -503,134 +342,6 @@ def get_genre_from_musicbrainz(artist: str, album: str) -> Optional[str]:
     return genre
 
 # ─────────────────────────────────────────────
-#  DATA MERGING
-# ─────────────────────────────────────────────
-
-def days_between(d1: Optional[str], d2: Optional[str]) -> Optional[int]:
-    if not d1 or not d2:
-        return None
-    try:
-        a = date.fromisoformat(d1)
-        b = date.fromisoformat(d2)
-        return (b - a).days
-    except Exception:
-        return None
-
-def merge_data(events: dict, tasks: dict) -> list[dict]:
-    """Combine all sources into a list of album records."""
-    all_keys = set(events.keys()) | set(tasks.keys())
-
-    records = []
-    for key in all_keys:
-        ev   = events.get(key, {})
-        task = tasks.get(key, {})
-
-        artist = ev.get("artist") or task.get("artist") or key[0]
-        album  = ev.get("album")  or task.get("album")  or key[1]
-
-        release_date  = ev.get("release_date")
-        listened_date = task.get("listened_date")
-
-        records.append({
-            "artist":        artist,
-            "album":         album,
-            "genre":         None,  # filled in later
-            "release_date":  release_date,
-            "listened_date": listened_date,
-            "days_release_to_listened": days_between(release_date, listened_date),
-        })
-
-    return records
-
-# ─────────────────────────────────────────────
-#  SQLITE STORAGE
-# ─────────────────────────────────────────────
-
-# ─────────────────────────────────────────────
-#  SQLITE STORAGE
-# ─────────────────────────────────────────────
-
-def save_record(conn: sqlite3.Connection, rec: dict) -> str:
-    """
-    Persist one album using the normalized schema.
-
-    Steps:
-      1. get_or_create artist            → artist_id
-      2. get_or_create genre (if known)  → genre_id
-      3. link artist ↔ genre             (idempotent)
-      4. Check album existence by (artist_id, name_normalized):
-           NOT EXISTS → full insert, return 'created'
-           EXISTS     → update only mutable date fields if any changed,
-                        return 'updated' or 'skipped'
-    """
-    artist_id = get_or_create_artist(conn, rec["artist"])
-
-    genre_id = None
-    if rec.get("genre"):
-        genre_id = get_or_create_genre(conn, rec["genre"])
-        link_artist_genre(conn, artist_id, genre_id)
-
-    name_norm = _normalize(rec["album"])
-
-    existing = conn.execute(
-        """SELECT album_id, release_date, listened_date
-           FROM albums
-           WHERE artist_id = ? AND name_normalized = ?""",
-        (artist_id, name_norm),
-    ).fetchone()
-
-    if existing is None:
-        # ── New album ─────────────────────────────────────────────────────
-        conn.execute("""
-            INSERT INTO albums
-                (artist_id, genre_id, name, name_normalized,
-                 release_date, listened_date, days_release_to_listened)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (
-            artist_id, genre_id, rec["album"], name_norm,
-            rec.get("release_date"), rec.get("listened_date"),
-            rec.get("days_release_to_listened"),
-        ))
-        return "created"
-
-    # ── Album already exists: update any field that has improved data ────
-    album_id, old_release, old_listened = existing
-
-    # Never overwrite a date/value already stored with None
-    new_release  = rec.get("release_date")  or old_release
-    new_listened = rec.get("listened_date") or old_listened
-
-    # Also update genre_id if we now have one and didn't before
-    existing_genre = conn.execute(
-        "SELECT genre_id FROM albums WHERE album_id = ?", (album_id,)
-    ).fetchone()
-    old_genre_id = existing_genre[0] if existing_genre else None
-    new_genre_id = genre_id if genre_id is not None else old_genre_id
-
-    changed = (
-        (new_listened, new_release, new_genre_id)
-        != (old_listened, old_release, old_genre_id)
-    )
-    if not changed:
-        return "skipped"
-
-    conn.execute("""
-        UPDATE albums SET
-            release_date              = ?,
-            listened_date             = ?,
-            genre_id                  = ?,
-            days_release_to_listened  = ?
-        WHERE album_id = ?
-    """, (
-        new_release, new_listened,
-        new_genre_id,
-        days_between(new_release, new_listened),
-        album_id,
-    ))
-    return "updated"
-
-
-# ─────────────────────────────────────────────
 #  JSON EXPORT
 # ─────────────────────────────────────────────
 
@@ -712,76 +423,44 @@ def main():
     print("🎵 Music Calendar Extractor")
     print("=" * 40)
 
+    print(f"\n💾 Abriendo {DB_PATH}...")
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("PRAGMA foreign_keys = ON")
+    init_db(conn)
+
     if args.export_only:
-        print(f"\n💾 Abriendo {DB_PATH}...")
-        conn = sqlite3.connect(DB_PATH)
-        conn.execute("PRAGMA foreign_keys = ON")
-        init_db(conn)
         print(f"\n📤 Exportando {JSON_PATH}...")
         export_json(conn, JSON_PATH)
         conn.close()
         print("\n✅ ¡Listo!")
         return
 
-    # 1. Fetch CalDAV
-    print("\n📅 Fetching calendar from Radicale...")
-    try:
-        raw_items = fetch_caldav_items()
-        print(f"  Found {len(raw_items)} calendar items")
-    except Exception as e:
-        print(f"  ❌ CalDAV error: {e}")
-        print("  Make sure RADICALE_URL, RADICALE_USER, RADICALE_PASSWORD and CALENDAR_PATH are correct.")
-        return
+    # Álbumes sin género: cal_to_estadisticas.py ya dejó release_date/
+    # listened_date al día vía Radicale, así que aquí no hace falta volver a
+    # tocar CalDAV -- solo enriquecer género para lo que aún no lo tenga.
+    rows = conn.execute("""
+        SELECT al.album_id, ar.artist_id, ar.name AS artist, al.name AS album
+        FROM   albums al
+        JOIN   artists ar ON ar.artist_id = al.artist_id
+        WHERE  al.genre_id IS NULL
+    """).fetchall()
+    print(f"\n🌐 Buscando género para {len(rows)} álbum(es) sin género...")
 
-    # 2. Parse
-    print("\n🔍 Parsing events and tasks...")
-    events, tasks = parse_calendar_items(raw_items)
-    print(f"  VEVENT (releases): {len(events)}")
-    print(f"  VTODO  (tasks):    {len(tasks)}")
+    stats = {"found": 0, "not_found": 0}
+    for album_id, artist_id, artist, album in rows:
+        genre = get_genre_from_musicbrainz(artist, album)
+        if not genre:
+            stats["not_found"] += 1
+            continue
+        genre_id = get_or_create_genre(conn, genre)
+        link_artist_genre(conn, artist_id, genre_id)
+        conn.execute("UPDATE albums SET genre_id = ? WHERE album_id = ?", (genre_id, album_id))
+        conn.commit()
+        stats["found"] += 1
 
-    # 3. Merge all sources
-    print("\n🔗 Merging data...")
-    records = merge_data(events, tasks)
-    print(f"  Total unique albums: {len(records)}")
+    print(f"  Con género: {stats['found']}  |  Sin género: {stats['not_found']}")
 
-    # 5. Open DB (creates tables on first run, idempotent afterwards)
-    print(f"\n💾 Opening {DB_PATH}...")
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("PRAGMA foreign_keys = ON")
-    init_db(conn)
-
-    # 6. Genre lookup — skip albums already stored to avoid redundant API calls
-    print("\n🌐 Fetching genres (new albums only)...")
-    for rec in records:
-        artist_id  = get_or_create_artist(conn, rec["artist"])
-        name_norm  = _normalize(rec["album"])
-        cached     = conn.execute(
-            """SELECT g.name FROM albums al
-               LEFT JOIN genres g ON g.genre_id = al.genre_id
-               WHERE al.artist_id = ? AND al.name_normalized = ?""",
-            (artist_id, name_norm),
-        ).fetchone()
-
-        if cached is not None and cached[0] is not None:
-            rec["genre"] = cached[0]          # already in DB with a genre, reuse it
-        else:
-            # Either new album or existing album with no genre yet → fetch
-            rec["genre"] = get_genre_from_musicbrainz(rec["artist"], rec["album"])
-
-    # 7. Persist — normalized insert/update with dedup
-    print("\n📥 Saving to database...")
-    stats = {"created": 0, "updated": 0, "skipped": 0}
-    for rec in records:
-        result = save_record(conn, rec)
-        stats[result] += 1
-        if result == "created":
-            print(f"  + {rec['artist']} — {rec['album']}")
-        elif result == "updated":
-            print(f"  ↺ {rec['artist']} — {rec['album']}  (dates updated)")
-    conn.commit()
-    print(f"  Created: {stats['created']}  |  Updated: {stats['updated']}  |  Unchanged: {stats['skipped']}")
-
-    # 8. JSON export for dashboard
+    # JSON export for dashboard
     print(f"\n📤 Exporting {JSON_PATH}...")
     export_json(conn, JSON_PATH)
     conn.close()
