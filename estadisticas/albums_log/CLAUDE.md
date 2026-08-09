@@ -18,7 +18,7 @@ date chains to be worth keeping.
 | `cal_to_estadisticas.py` | Main sync script: VTODO-driven, updates `music_stats.db`, marks COMPLETED via Last.fm scrobble matching |
 | `airsonic_checker.py` | Creates anchor VTODOs (no date) for VEVENTs without a task, if the album is found in Airsonic — just to get it into the tracking loop |
 | `qbittorrent_checker.py` | Same as above but checks qBittorrent |
-| `extraer_estadisticas.py` | Older extraction script (reads both VEVENT+VTODO, fetches genres from MB/Last.fm); still used to populate genre data |
+| `extraer_estadisticas.py` | Reads albums already in `music_stats.db` (synced there by `cal_to_estadisticas.py`) and fills in `genre_id` via MusicBrainz/Last.fm for whichever don't have one yet, then exports `data.json`. Does *not* touch CalDAV itself — an earlier version did its own broken CalDAV fetch (hardcoded empty `CALENDAR_PATH`, never matched the split VEVENT/VTODO calendars) and silently found 0 items every run, so genres never populated. |
 | `sops_env.py` | SOPS+age bridge replacing `python-dotenv`; walks up directories to find `.encrypted.env` |
 
 ## Running Scripts
@@ -39,9 +39,8 @@ python airsonic_checker.py --since 365 --dry-run
 # Detect albums in qBittorrent without a VTODO, create anchor VTODOs
 python qbittorrent_checker.py --since 365 --dry-run
 
-# Enrich genres from MusicBrainz/Last.fm (older script, also does its own
-# CalDAV fetch — only worth running standalone, main.sh always uses
-# --export-only since cal_to_estadisticas.py already left the DB current)
+# Enrich genres from MusicBrainz/Last.fm for albums that don't have one yet
+# (reads music_stats.db directly, no CalDAV fetch of its own)
 python extraer_estadisticas.py
 ```
 
