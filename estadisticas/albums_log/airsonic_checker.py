@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """
 Para cada VEVENT del calendario de lanzamientos que no tenga VTODO asociado
-en el calendario de tareas, comprueba si el álbum existe en Airsonic.
-Si lo encuentra, crea el VTODO con DTSTART igual a la fecha en que el álbum
-fue añadido a la biblioteca de Airsonic.
+en el calendario de tareas, comprueba si el álbum existe en Airsonic. Si lo
+encuentra, crea un VTODO "ancla" (sin DTSTART) para que cal_to_estadisticas.py
+lo recoja y le busque fecha de escucha en Last.fm -- no se rastrea fecha de
+compra/tienda (el "created" de Airsonic resultó ser poco fiable: refleja
+cuándo se reescaneó la biblioteca, no cuándo se adquirió el álbum).
 
 Uso:
     python airsonic_checker.py              # procesa y crea VTODOs
@@ -129,7 +131,9 @@ def put_ical(href: str, ical_text: str, cal_name: str) -> bool:
     return True
 
 
-def create_vtodo(artist: str, album: str, purchase_date: date) -> str | None:
+def create_vtodo(artist: str, album: str) -> str | None:
+    """Crea un VTODO ancla (sin DTSTART) para que entre en el tracking de
+    escucha de cal_to_estadisticas.py -- no representa una fecha de compra."""
     uid = str(uuid.uuid4())
     cal = Calendar()
     cal.add('PRODID', '-//airsonic_checker//ES')
@@ -137,15 +141,9 @@ def create_vtodo(artist: str, album: str, purchase_date: date) -> str | None:
     todo = Todo()
     todo.add('UID',     uid)
     todo.add('SUMMARY', f'{artist} - {album}')
-    todo.add('DTSTART', purchase_date)
     todo.add('STATUS',  'NEEDS-ACTION')
     todo.add('DTSTAMP', datetime.now(tz=timezone.utc))
     todo.add('CREATED', datetime.now(tz=timezone.utc))
-    # Marca que este DTSTART es una estimación (fecha "created" de Airsonic,
-    # que refleja cuándo se escaneó/reimportó la biblioteca, no cuándo se
-    # adquirió realmente el álbum) -- cal_to_estadisticas.py la usa para no
-    # tratarla como si fuera una fecha de compra real.
-    todo.add('X-PURCHASE-SOURCE', 'airsonic')
     cal.add_component(todo)
     ical_text = cal.to_ical().decode('utf-8')
     href = f'{RADICALE_BASE}/{CALENDAR_TASKS}/{uid}.ics'
@@ -154,13 +152,10 @@ def create_vtodo(artist: str, album: str, purchase_date: date) -> str | None:
 
 # ── Airsonic ──────────────────────────────────────────────────────────────────
 
-def search_airsonic(artist: str, album: str) -> date | None:
-    """
-    Busca el álbum en Airsonic y devuelve la fecha `created` (fecha de añadido
-    a la biblioteca), o None si no se encuentra.
-    """
+def found_in_airsonic(artist: str, album: str) -> bool:
+    """True si el álbum existe en la biblioteca de Airsonic."""
     if not AIRSONIC_URL or not AIRSONIC_USER:
-        return None
+        return False
 
     try:
         r = requests.get(
@@ -183,11 +178,11 @@ def search_airsonic(artist: str, album: str) -> date | None:
         data = r.json()
     except Exception as e:
         print(f'    ⚠  Airsonic: error de conexión — {e}')
-        return None
+        return False
 
     if data.get('subsonic-response', {}).get('status') != 'ok':
         print(f'    ⚠  Airsonic: respuesta no OK — {data}')
-        return None
+        return False
 
     albums = (
         data.get('subsonic-response', {})
@@ -195,30 +190,20 @@ def search_airsonic(artist: str, album: str) -> date | None:
             .get('album', [])
     )
     if not albums:
-        return None
+        return False
 
     artist_n = _normalize(artist)
     album_n  = _normalize(album)
-    best: date | None = None
 
     for found in albums:
         fa = _normalize(found.get('artist', ''))
         fn = _normalize(found.get('name',   ''))
         if fa != artist_n:
             continue
-        if fn != album_n and album_n not in fn:
-            continue
-        raw = found.get('created', '')
-        if not raw:
-            return date.today()
-        try:
-            d = datetime.fromisoformat(raw.rstrip('Z')).date()
-        except ValueError:
-            d = date.today()
-        if best is None or d < best:
-            best = d
+        if fn == album_n or album_n in fn:
+            return True
 
-    return best
+    return False
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -289,20 +274,19 @@ def main():
             stats['sin_tarea'] += 1
             print(f'  ❓ Sin tarea: {artist} — {album}  (lanzamiento: {release or "?"})')
 
-            purchase_date = search_airsonic(artist, album)
-            if purchase_date is None:
+            if not found_in_airsonic(artist, album):
                 print(f'     ℹ  No encontrado en Airsonic')
                 stats['no_encontrado'] += 1
                 continue
 
             stats['en_airsonic'] += 1
-            print(f'     🛒 Airsonic: añadido el {purchase_date.isoformat()}')
+            print(f'     🛒 Encontrado en Airsonic')
 
             if args.dry_run:
-                print(f'     [DRY RUN] crearía VTODO con DTSTART={purchase_date.isoformat()}')
+                print(f'     [DRY RUN] crearía VTODO ancla')
                 stats['creados'] += 1
             else:
-                href = create_vtodo(artist, album, purchase_date)
+                href = create_vtodo(artist, album)
                 if href:
                     print(f'     ✅ VTODO creado: {href}')
                     task_keys.add(key)

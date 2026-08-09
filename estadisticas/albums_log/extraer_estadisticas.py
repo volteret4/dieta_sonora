@@ -76,11 +76,8 @@ CREATE TABLE IF NOT EXISTS albums (
     name                      TEXT NOT NULL,
     name_normalized           TEXT NOT NULL,
     release_date              TEXT,
-    purchase_date             TEXT,
     listened_date             TEXT,
-    days_release_to_purchase  INTEGER,
-    days_purchase_to_listened INTEGER,
-    purchase_date_estimated   INTEGER NOT NULL DEFAULT 0,
+    days_release_to_listened  INTEGER,
     UNIQUE(artist_id, name_normalized)
 );
 """
@@ -101,13 +98,20 @@ def _normalize(s: str) -> str:
 
 def init_db(conn: sqlite3.Connection):
     conn.executescript(SCHEMA)
-    # Migración: purchase_date_estimated se añadió después de que hubiera DBs
-    # ya desplegadas -- CREATE TABLE IF NOT EXISTS no toca una tabla existente.
+    # Migración aditiva sobre DBs ya desplegadas -- CREATE TABLE IF NOT EXISTS
+    # no toca una tabla existente. Las columnas de compra/tienda de versiones
+    # anteriores (purchase_date, purchase_date_estimated,
+    # days_release_to_purchase, days_purchase_to_listened) se dejan huérfanas
+    # en vez de borrarlas: DROP COLUMN es más arriesgado que no tocarlas.
     cols = {row[1] for row in conn.execute("PRAGMA table_info(albums)")}
-    if "purchase_date_estimated" not in cols:
+    if "days_release_to_listened" not in cols:
         conn.execute(
-            "ALTER TABLE albums ADD COLUMN purchase_date_estimated "
-            "INTEGER NOT NULL DEFAULT 0"
+            "ALTER TABLE albums ADD COLUMN days_release_to_listened INTEGER"
+        )
+        conn.execute(
+            "UPDATE albums SET days_release_to_listened = "
+            "CAST(julianday(listened_date) - julianday(release_date) AS INTEGER) "
+            "WHERE release_date IS NOT NULL AND listened_date IS NOT NULL"
         )
     conn.commit()
 
@@ -246,7 +250,7 @@ def parse_calendar_items(raw_items: list[str]) -> tuple[dict, dict]:
     """
     Returns:
         events: {(artist, album): release_date}
-        tasks:  {(artist, album): {"purchase_date": ..., "listened_date": ...}}
+        tasks:  {(artist, album): {"listened_date": ...}}
     """
     try:
         from icalendar import Calendar
@@ -285,9 +289,6 @@ def parse_calendar_items(raw_items: list[str]) -> tuple[dict, dict]:
                     continue
 
                 status = str(component.get("STATUS", "")).upper()
-                # Task created = purchase date (CREATED or DTSTART)
-                purchase_date = parse_date(component.get("CREATED")) or \
-                                parse_date(component.get("DTSTART"))
                 # Task completed = listened date
                 # Some CalDAV clients set STATUS=COMPLETED but omit the COMPLETED
                 # property, so we fall back to LAST-MODIFIED or DTSTAMP.
@@ -302,7 +303,6 @@ def parse_calendar_items(raw_items: list[str]) -> tuple[dict, dict]:
                 tasks[(artist.lower(), album.lower())] = {
                     "artist": artist,
                     "album": album,
-                    "purchase_date": purchase_date,
                     "listened_date": listened_date,
                 }
 
@@ -529,7 +529,6 @@ def merge_data(events: dict, tasks: dict) -> list[dict]:
         album  = ev.get("album")  or task.get("album")  or key[1]
 
         release_date  = ev.get("release_date")
-        purchase_date = task.get("purchase_date")
         listened_date = task.get("listened_date")
 
         records.append({
@@ -537,10 +536,8 @@ def merge_data(events: dict, tasks: dict) -> list[dict]:
             "album":         album,
             "genre":         None,  # filled in later
             "release_date":  release_date,
-            "purchase_date": purchase_date,
             "listened_date": listened_date,
-            "days_release_to_purchase":  days_between(release_date, purchase_date),
-            "days_purchase_to_listened": days_between(purchase_date, listened_date),
+            "days_release_to_listened": days_between(release_date, listened_date),
         })
 
     return records
@@ -576,7 +573,7 @@ def save_record(conn: sqlite3.Connection, rec: dict) -> str:
     name_norm = _normalize(rec["album"])
 
     existing = conn.execute(
-        """SELECT album_id, release_date, purchase_date, listened_date
+        """SELECT album_id, release_date, listened_date
            FROM albums
            WHERE artist_id = ? AND name_normalized = ?""",
         (artist_id, name_norm),
@@ -587,24 +584,20 @@ def save_record(conn: sqlite3.Connection, rec: dict) -> str:
         conn.execute("""
             INSERT INTO albums
                 (artist_id, genre_id, name, name_normalized,
-                 release_date, purchase_date, listened_date,
-                 days_release_to_purchase, days_purchase_to_listened)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 release_date, listened_date, days_release_to_listened)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (
             artist_id, genre_id, rec["album"], name_norm,
-            rec.get("release_date"),
-            rec.get("purchase_date"), rec.get("listened_date"),
-            rec.get("days_release_to_purchase"),
-            rec.get("days_purchase_to_listened"),
+            rec.get("release_date"), rec.get("listened_date"),
+            rec.get("days_release_to_listened"),
         ))
         return "created"
 
     # ── Album already exists: update any field that has improved data ────
-    album_id, old_release, old_purchase, old_listened = existing
+    album_id, old_release, old_listened = existing
 
     # Never overwrite a date/value already stored with None
     new_release  = rec.get("release_date")  or old_release
-    new_purchase = rec.get("purchase_date") or old_purchase
     new_listened = rec.get("listened_date") or old_listened
 
     # Also update genre_id if we now have one and didn't before
@@ -615,8 +608,8 @@ def save_record(conn: sqlite3.Connection, rec: dict) -> str:
     new_genre_id = genre_id if genre_id is not None else old_genre_id
 
     changed = (
-        (new_purchase, new_listened, new_release, new_genre_id)
-        != (old_purchase, old_listened, old_release, old_genre_id)
+        (new_listened, new_release, new_genre_id)
+        != (old_listened, old_release, old_genre_id)
     )
     if not changed:
         return "skipped"
@@ -624,17 +617,14 @@ def save_record(conn: sqlite3.Connection, rec: dict) -> str:
     conn.execute("""
         UPDATE albums SET
             release_date              = ?,
-            purchase_date             = ?,
             listened_date             = ?,
             genre_id                  = ?,
-            days_release_to_purchase  = ?,
-            days_purchase_to_listened = ?
+            days_release_to_listened  = ?
         WHERE album_id = ?
     """, (
-        new_release, new_purchase, new_listened,
+        new_release, new_listened,
         new_genre_id,
-        days_between(new_release, new_purchase),
-        days_between(new_purchase, new_listened),
+        days_between(new_release, new_listened),
         album_id,
     ))
     return "updated"
@@ -657,11 +647,8 @@ def export_json(conn: sqlite3.Connection, path: str):
             al.name                       AS album,
             g.name                        AS genre,
             al.release_date,
-            al.purchase_date,
             al.listened_date,
-            al.days_release_to_purchase,
-            al.days_purchase_to_listened,
-            al.purchase_date_estimated
+            al.days_release_to_listened
         FROM   albums  al
         JOIN   artists ar ON ar.artist_id = al.artist_id
         LEFT   JOIN genres  g  ON g.genre_id  = al.genre_id
@@ -749,8 +736,8 @@ def main():
     # 2. Parse
     print("\n🔍 Parsing events and tasks...")
     events, tasks = parse_calendar_items(raw_items)
-    print(f"  VEVENT (releases):  {len(events)}")
-    print(f"  VTODO  (purchases): {len(tasks)}")
+    print(f"  VEVENT (releases): {len(events)}")
+    print(f"  VTODO  (tasks):    {len(tasks)}")
 
     # 3. Merge all sources
     print("\n🔗 Merging data...")

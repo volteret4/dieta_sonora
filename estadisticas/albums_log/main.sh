@@ -1,8 +1,9 @@
 #!/bin/bash
-# Orquestador diario del dashboard de estadísticas (release → compra → escucha).
+# Orquestador diario del dashboard de estadísticas (release → escucha; no se
+# rastrea compra/tienda, ver commit que las quitó).
 #
 # Orden:
-#   1. airsonic_checker.py    — crea VTODOs para compras vistas en Airsonic sin tarea
+#   1. airsonic_checker.py    — crea VTODOs ancla para álbumes vistos en Airsonic sin tarea
 #   2. qbittorrent_checker.py — igual pero desde qBittorrent
 #   3. cal_to_estadisticas.py — sincroniza VTODOs -> music_stats.db (fuente de verdad,
 #                                incluye matching de escuchas contra lastfm_stats.db si existe)
@@ -34,11 +35,14 @@ echo "── 1/4 Airsonic checker (--since $SINCE) ──"
 echo "── 2/4 qBittorrent checker (--since $SINCE) ──"
 "$PYTHON" qbittorrent_checker.py --since "$SINCE" "${DRY_RUN[@]}"
 
-echo "── 3/4 Sync calendario → music_stats.db (--since $SINCE) ──"
+echo "── 3/4 Sync calendario → music_stats.db ──"
 # --auto: sin esto, un álbum que MusicBrainz no encuentra hace que el script
 # pida la fecha de lanzamiento por input() -- sin stdin (cron/Ofelia) eso es
 # un EOFError inmediato que aborta todo el pipeline (set -e).
-"$PYTHON" cal_to_estadisticas.py --since "$SINCE" --auto "${DRY_RUN[@]}"
+# Sin --since: ya no filtra por fecha de compra (no existe); procesa todos
+# los VTODO y usa "completed" para no repetir trabajo caro (MB/Last.fm) en
+# los que ya tienen fecha de escucha.
+"$PYTHON" cal_to_estadisticas.py --auto "${DRY_RUN[@]}"
 
 echo "── 4/4 Exportando data.json ──"
 "$PYTHON" extraer_estadisticas.py --export-only
