@@ -350,10 +350,6 @@
                 color: var(--danger);
                 border: 1px solid var(--danger);
             }
-            .date-estimated {
-                border-bottom: 1px dotted var(--text-dim);
-                cursor: help;
-            }
 
             /* ── LOADING / ERROR ── */
             .center-msg {
@@ -510,7 +506,7 @@
                 border: "#2a2a30",
                 text: "#e4ddd0",
             };
-            const STAGE_COLORS = [C.teal, C.purple];
+            const STAGE_COLORS = [C.teal];
             const GENRE_PALETTE = [
                 "#c8a84b",
                 "#4a9e8e",
@@ -541,26 +537,11 @@
                 const cls = v < 0 ? "badge-error" : v <= 14 ? "badge-ok" : "badge-warn";
                 return React.createElement(
                     "span",
-                    { className: `badge ${cls}`, title: v < 0 ? "Escuchado antes de la fecha de compra registrada" : undefined },
+                    { className: `badge ${cls}`, title: v < 0 ? "Escuchado antes del lanzamiento" : undefined },
                     `${v}d`,
                 );
             };
             const fmtDate = (d) => (d ? d.slice(0, 10) : "—");
-            // purchase_date_estimated: el DTSTART vino de Airsonic/qBittorrent
-            // (created/added_on), no de una compra real -- se marca con "~" y
-            // un tooltip para no confundirla con una fecha registrada a mano.
-            const fmtPurchaseDate = (a) => {
-                const text = fmtDate(a.purchase_date);
-                if (!a.purchase_date || !a.purchase_date_estimated) return text;
-                return React.createElement(
-                    "span",
-                    {
-                        className: "date-estimated",
-                        title: "Estimada a partir de Airsonic/qBittorrent, no es una fecha de compra registrada",
-                    },
-                    `~${text}`,
-                );
-            };
 
             // ── CUSTOM TOOLTIP ───────────────────────────
             function CT({ active, payload, label }) {
@@ -641,17 +622,13 @@
                 // KPIs
                 const kpi = useMemo(() => {
                     const d1 = filtered
-                        .map((a) => a.days_release_to_purchase)
-                        .filter((v) => v != null);
-                    const d2 = filtered
-                        .map((a) => a.days_purchase_to_listened)
+                        .map((a) => a.days_release_to_listened)
                         .filter((v) => v != null);
                     return {
                         total: filtered.length,
                         listened: filtered.filter((a) => a.listened_date)
                             .length,
-                        avgRP: avg(d1),
-                        avgPL: avg(d2),
+                        avgRL: avg(d1),
                     };
                 }, [filtered]);
 
@@ -662,13 +639,10 @@
                         if (!map[a.artist])
                             map[a.artist] = {
                                 name: a.artist,
-                                rp: [],
-                                pl: [],
+                                rl: [],
                             };
-                        if (a.days_release_to_purchase != null)
-                            map[a.artist].rp.push(a.days_release_to_purchase);
-                        if (a.days_purchase_to_listened != null)
-                            map[a.artist].pl.push(a.days_purchase_to_listened);
+                        if (a.days_release_to_listened != null)
+                            map[a.artist].rl.push(a.days_release_to_listened);
                     });
                     return Object.values(map)
                         .map((v) => ({
@@ -676,14 +650,9 @@
                                 v.name.length > 18
                                     ? v.name.slice(0, 18) + "…"
                                     : v.name,
-                            "Lanz→Compra": avg(v.rp),
-                            "Compra→Escucha": avg(v.pl),
+                            "Lanz→Escucha": avg(v.rl),
                         }))
-                        .filter(
-                            (v) =>
-                                v["Lanz→Compra"] ||
-                                v["Compra→Escucha"],
-                        );
+                        .filter((v) => v["Lanz→Escucha"]);
                 }, [filtered]);
 
                 // Chart: avg days per genre
@@ -692,34 +661,29 @@
                     filtered.forEach((a) => {
                         const g = a.genre || "Sin género";
                         if (!map[g])
-                            map[g] = { name: g, rp: [], pl: [] };
-                        if (a.days_release_to_purchase != null)
-                            map[g].rp.push(a.days_release_to_purchase);
-                        if (a.days_purchase_to_listened != null)
-                            map[g].pl.push(a.days_purchase_to_listened);
+                            map[g] = { name: g, rl: [] };
+                        if (a.days_release_to_listened != null)
+                            map[g].rl.push(a.days_release_to_listened);
                     });
                     return Object.values(map).map((v) => ({
                         name: v.name,
-                        "Lanz→Compra": avg(v.rp),
-                        "Compra→Escucha": avg(v.pl),
+                        "Lanz→Escucha": avg(v.rl),
                     }));
                 }, [filtered]);
 
-                // Scatter: release date vs total pipeline
+                // Scatter: release date vs days to listen
                 const scatter = useMemo(() => {
                     return filtered
                         .filter(
                             (a) =>
                                 a.release_date &&
-                                a.days_release_to_purchase != null,
+                                a.days_release_to_listened != null,
                         )
                         .map((a) => ({
                             x:
                                 new Date(a.release_date).getFullYear() +
                                 new Date(a.release_date).getMonth() / 12,
-                            y:
-                                (a.days_release_to_purchase || 0) +
-                                (a.days_purchase_to_listened || 0),
+                            y: a.days_release_to_listened || 0,
                             name: `${a.artist} — ${a.album}`,
                         }));
                 }, [filtered]);
@@ -766,10 +730,7 @@
                         React.createElement("span", null, "Cargando…"),
                     );
 
-                const stageKeys = [
-                    "Lanz→Compra",
-                    "Compra→Escucha",
-                ];
+                const stageKeys = ["Lanz→Escucha"];
 
                 return React.createElement(
                     React.Fragment,
@@ -879,13 +840,8 @@
                                 `${kpi.total > 0 ? Math.round((kpi.listened / kpi.total) * 100) : 0}% del total`,
                             ),
                             kpiCard(
-                                fmtD(kpi.avgRP),
-                                "Prom. Lanz→Compra",
-                                "días hasta compra",
-                            ),
-                            kpiCard(
-                                fmtD(kpi.avgPL),
-                                "Prom. Compra→Escucha",
+                                fmtD(kpi.avgRL),
+                                "Prom. Lanz→Escucha",
                                 "días hasta escuchar",
                             ),
                         ),
@@ -1167,10 +1123,6 @@
                                         ),
                                         React.createElement(
                                             "th",
-                                            thProps("purchase_date", "Compra"),
-                                        ),
-                                        React.createElement(
-                                            "th",
                                             thProps(
                                                 "listened_date",
                                                 "Escuchado",
@@ -1179,15 +1131,8 @@
                                         React.createElement(
                                             "th",
                                             thProps(
-                                                "days_release_to_purchase",
-                                                "L→C",
-                                            ),
-                                        ),
-                                        React.createElement(
-                                            "th",
-                                            thProps(
-                                                "days_purchase_to_listened",
-                                                "C→E",
+                                                "days_release_to_listened",
+                                                "L→E",
                                             ),
                                         ),
                                     ),
@@ -1222,11 +1167,6 @@
                                             React.createElement(
                                                 "td",
                                                 { className: "td-date" },
-                                                fmtPurchaseDate(a),
-                                            ),
-                                            React.createElement(
-                                                "td",
-                                                { className: "td-date" },
                                                 fmtDate(a.listened_date) +
                                                     (a.listened_date
                                                         ? " ✓"
@@ -1236,14 +1176,7 @@
                                                 "td",
                                                 { className: "td-days" },
                                                 daysBadge(
-                                                    a.days_release_to_purchase,
-                                                ),
-                                            ),
-                                            React.createElement(
-                                                "td",
-                                                { className: "td-days" },
-                                                daysBadge(
-                                                    a.days_purchase_to_listened,
+                                                    a.days_release_to_listened,
                                                 ),
                                             ),
                                         ),

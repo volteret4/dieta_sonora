@@ -126,7 +126,9 @@ def put_ical(href: str, ical_text: str, cal_name: str) -> bool:
     return True
 
 
-def create_vtodo(artist: str, album: str, purchase_date: date) -> str | None:
+def create_vtodo(artist: str, album: str) -> str | None:
+    """Crea un VTODO ancla (sin DTSTART) para que entre en el tracking de
+    escucha de cal_to_estadisticas.py -- no representa una fecha de compra."""
     uid = str(uuid.uuid4())
     cal = Calendar()
     cal.add('PRODID', '-//qbittorrent_checker//ES')
@@ -134,15 +136,9 @@ def create_vtodo(artist: str, album: str, purchase_date: date) -> str | None:
     todo = Todo()
     todo.add('UID',     uid)
     todo.add('SUMMARY', f'{artist} - {album}')
-    todo.add('DTSTART', purchase_date)
     todo.add('STATUS',  'NEEDS-ACTION')
     todo.add('DTSTAMP', datetime.now(tz=timezone.utc))
     todo.add('CREATED', datetime.now(tz=timezone.utc))
-    # Marca que este DTSTART es una estimación (added_on de qBittorrent, que
-    # refleja cuándo se añadió el torrent, no necesariamente cuándo se
-    # adquirió el álbum) -- cal_to_estadisticas.py la usa para no tratarla
-    # como si fuera una fecha de compra real.
-    todo.add('X-PURCHASE-SOURCE', 'qbittorrent')
     cal.add_component(todo)
     ical_text = cal.to_ical().decode('utf-8')
     href = f'{RADICALE_BASE}/{CALENDAR_TASKS}/{uid}.ics'
@@ -151,25 +147,17 @@ def create_vtodo(artist: str, album: str, purchase_date: date) -> str | None:
 
 # ── qBittorrent ───────────────────────────────────────────────────────────────
 
-def search_qbittorrent(torrents: list, artist: str, album: str) -> date | None:
-    """
-    Busca el álbum en la lista de torrents y devuelve la fecha en que fue
-    añadido a qBittorrent (added_on), o None si no se encuentra.
-    """
+def found_in_qbittorrent(torrents: list, artist: str, album: str) -> bool:
+    """True si el álbum aparece en la lista de torrents de qBittorrent."""
     artist_n = _normalize(artist)
     album_n  = _normalize(album)
-    best: date | None = None
 
     for t in torrents:
         t_name = _normalize(t.name)
-        if artist_n not in t_name or album_n not in t_name:
-            continue
-        try:
-            added = datetime.fromtimestamp(t.added_on, tz=timezone.utc).date()
-        except Exception:
-            added = date.today()
-        if best is None or added < best:
-            best = added
+        if artist_n in t_name and album_n in t_name:
+            return True
+
+    return False
 
     return best
 
@@ -252,20 +240,19 @@ def main():
             stats['sin_tarea'] += 1
             print(f'  ❓ Sin tarea: {artist} — {album}  (lanzamiento: {release or "?"})')
 
-            purchase_date = search_qbittorrent(torrents, artist, album)
-            if purchase_date is None:
+            if not found_in_qbittorrent(torrents, artist, album):
                 print(f'     ℹ  No encontrado en qBittorrent')
                 stats['no_encontrado'] += 1
                 continue
 
             stats['en_qb'] += 1
-            print(f'     📦 qBittorrent: añadido el {purchase_date.isoformat()}')
+            print(f'     📦 Encontrado en qBittorrent')
 
             if args.dry_run:
-                print(f'     [DRY RUN] crearía VTODO con DTSTART={purchase_date.isoformat()}')
+                print(f'     [DRY RUN] crearía VTODO ancla')
                 stats['creados'] += 1
             else:
-                href = create_vtodo(artist, album, purchase_date)
+                href = create_vtodo(artist, album)
                 if href:
                     print(f'     ✅ VTODO creado: {href}')
                     task_keys.add(key)
