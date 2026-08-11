@@ -44,20 +44,28 @@ if [ "$CHECKSUM_ANTES" != "$CHECKSUM_DESPUES" ]; then
     # busca los que no tienes en orpheus
     echo "Buscando en Orpheus"
     $PYTHON buscar_nuevos.py
-
-    # crear html
-    echo "Creando HTML"
-    $PYTHON html_generator.py
-
-    # copiar html (resumen_flacs.html está bind-mounted como archivo suelto
-    # en Docker; "mv" falla con "Device or resource busy" porque no se puede
-    # unlink un punto de montaje - "cp" sí funciona ya que index.html es un
-    # archivo normal dentro del contenedor)
-    cp resumen_flacs.html index.html
-    
 else
     echo "CSV sin cambios - no hay álbumes que eliminar"
 fi
+
+# Limpia de resultado_flacs.json (la fuente real de la web) los álbumes que
+# ya tienes -- esto es independiente de si el CSV cambió arriba: los pasos
+# de airsonic_clean_csv.py/qbittorrent_cleaner_csv.py de más arriba solo
+# tocan albums.csv, nunca el JSON, así que un álbum que ya tenías cuando se
+# añadió (o que descargaste después) se quedaba mostrándose para siempre.
+echo "Limpiando álbumes que ya tienes de resultado_flacs.json"
+$PYTHON limpiar_ya_tengo.py
+
+# crear html (siempre, no solo si el CSV cambió arriba -- la limpieza de
+# resultado_flacs.json puede haber cambiado la web aunque el CSV no)
+echo "Creando HTML"
+$PYTHON html_generator.py
+
+# copiar html (resumen_flacs.html está bind-mounted como archivo suelto
+# en Docker; "mv" falla con "Device or resource busy" porque no se puede
+# unlink un punto de montaje - "cp" sí funciona ya que index.html es un
+# archivo normal dentro del contenedor)
+cp resumen_flacs.html index.html
 
 # Copiar archivos HTML generados a SWAG || Comentado porque el contenedor de docker monta este directorio
 #cp "$HOME"/Scripts/Musica/orpheus-api/index.html "$HOME"/contenedores/herramientas/swag/config/www/musica/

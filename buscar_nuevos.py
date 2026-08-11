@@ -5,6 +5,7 @@ import time
 import os
 from datetime import datetime
 from tools.sops_env import load_sops_env
+from ya_lo_tengo import qb_torrent_names, ya_lo_tengo
 
 try:
     load_sops_env()
@@ -116,12 +117,21 @@ def main():
     cambios_realizados = False
     fecha_hoy = datetime.now().strftime("%Y-%m-%d")
 
+    print("🔍 Comprobando qué discos ya tienes en qBittorrent/Airsonic...")
+    torrent_names = qb_torrent_names()
+
     for i, fila in enumerate(filas_csv):
         if len(fila) < 2: continue
 
         artista, album = fila[0].strip(), fila[1].strip()
         # Si ya está en el JSON, saltar
         if f"{artista.lower()}|{album.lower()}" in procesados_set:
+            continue
+
+        # Si ya lo tienes en Airsonic/qBittorrent, no tiene sentido buscarlo
+        # en Orpheus ni mostrarlo como "nuevo" -- sería redundante.
+        if ya_lo_tengo(artista, album, torrent_names):
+            print(f" ⏭️  {artista} - {album}: ya lo tienes, se omite")
             continue
 
         print(f" Buscando: {artista} - {album}")
