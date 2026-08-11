@@ -136,6 +136,53 @@
                 transform: scale(1.1);
                 background: #c0392b;
             }
+            .bulk-checkbox {
+                position: absolute;
+                top: 10px;
+                left: 10px;
+                width: 20px;
+                height: 20px;
+                cursor: pointer;
+                z-index: 10;
+                accent-color: var(--accent);
+            }
+            .album.checked {
+                border-color: var(--accent);
+                box-shadow: 0 6px 12px rgba(53, 191, 136, 0.5);
+                background: rgba(53, 191, 136, 0.08);
+            }
+            .bulk-toolbar {
+                position: sticky;
+                top: 0;
+                z-index: 20;
+                display: none;
+                align-items: center;
+                gap: 12px;
+                background: var(--accent);
+                color: #fff;
+                padding: 10px 20px;
+                font-size: 14px;
+                font-weight: 600;
+            }
+            .bulk-toolbar.visible {
+                display: flex;
+            }
+            .bulk-toolbar button {
+                border: none;
+                border-radius: 6px;
+                padding: 6px 14px;
+                font-size: 13px;
+                font-weight: 600;
+                cursor: pointer;
+            }
+            .bulk-toolbar .btn-delete-selected {
+                background: var(--danger);
+                color: #fff;
+            }
+            .bulk-toolbar .btn-clear-selection {
+                background: rgba(255,255,255,0.2);
+                color: #fff;
+            }
             .sidebar {
                 width: 30%;
                 height: 100vh;
@@ -700,6 +747,11 @@
                         🏆 Top 10 Orpheus <span class="tab-count" id="count-top10">0</span>
                     </button>
                 </div>
+                <div class="bulk-toolbar" id="bulk-toolbar">
+                    <span id="bulk-count">0 seleccionados</span>
+                    <button class="btn-delete-selected" onclick="deleteSelected()">🗑️ Eliminar seleccionados</button>
+                    <button class="btn-clear-selection" onclick="clearSelection()">Cancelar</button>
+                </div>
                 <div class="albums-grid">
                     <p style="color:#7a8694;padding:20px">Cargando álbumes...</p>
                 </div>
@@ -716,6 +768,7 @@
         <script>
             let currentSelected = null;
             let currentTab = 'seguidos';
+            let selectedForDelete = new Set();
             window.torrentData = {};
             window.embedData = {};
             window.allEntries = [];
@@ -771,6 +824,8 @@
                 document.querySelectorAll('.tab-btn').forEach(btn => {
                     btn.classList.toggle('active', btn.dataset.tab === tab);
                 });
+                selectedForDelete.clear();
+                updateBulkToolbar();
                 renderGrid();
             }
 
@@ -793,11 +848,13 @@
                         type === 'manual' ? '<span class="album-type-badge badge-manual">manual</span>' : '';
 
                     const div = document.createElement('div');
-                    div.className = 'album type-' + type;
+                    div.className = 'album type-' + type + (selectedForDelete.has(groupId) ? ' checked' : '');
                     div.id = 'album-' + groupId;
                     div.onclick = () => showTorrents(groupId, album.artist, album.album, oldestYear, flacCount);
                     div.innerHTML =
                         badgeHtml +
+                        '<input type="checkbox" class="bulk-checkbox" onclick="toggleSelect(' + groupId + ', event)"' +
+                            (selectedForDelete.has(groupId) ? ' checked' : '') + '>' +
                         '<button class="delete-btn" onclick="deleteAlbum(' + groupId + ', event)" title="Eliminar álbum">×</button>' +
                         '<img src="' + (group.cover || '') + '" alt="' + album.artist + ' - ' + album.album + '">' +
                         '<div class="album-artist">' + album.artist + '</div>' +
@@ -1119,6 +1176,66 @@
                     showNotification('✗ Error de conexión: ' + error.message, true);
                 }
             }
+
+            function toggleSelect(groupId, event) {
+                event.stopPropagation();
+                const div = document.getElementById('album-' + groupId);
+                if (selectedForDelete.has(groupId)) {
+                    selectedForDelete.delete(groupId);
+                    div.classList.remove('checked');
+                } else {
+                    selectedForDelete.add(groupId);
+                    div.classList.add('checked');
+                }
+                updateBulkToolbar();
+            }
+
+            function updateBulkToolbar() {
+                const toolbar = document.getElementById('bulk-toolbar');
+                const count = selectedForDelete.size;
+                toolbar.classList.toggle('visible', count > 0);
+                document.getElementById('bulk-count').textContent =
+                    count + (count === 1 ? ' seleccionado' : ' seleccionados');
+            }
+
+            function clearSelection() {
+                selectedForDelete.clear();
+                document.querySelectorAll('.album.checked').forEach(el => el.classList.remove('checked'));
+                document.querySelectorAll('.bulk-checkbox').forEach(el => el.checked = false);
+                updateBulkToolbar();
+            }
+
+            async function deleteSelected() {
+                const groupIds = Array.from(selectedForDelete);
+                if (groupIds.length === 0) return;
+
+                if (!confirm(`¿Eliminar ${groupIds.length} álbum(es) seleccionados?`)) {
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/api/delete-bulk', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ groupIds: groupIds })
+                    });
+
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        showNotification('✓ ' + data.message + '. Recargando página...');
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 1500);
+                    } else {
+                        showNotification('✗ Error: ' + (data.error || 'Error desconocido'), true);
+                    }
+                } catch (error) {
+                    console.error('Error completo:', error);
+                    showNotification('✗ Error de conexión: ' + error.message, true);
+                }
+            }
+
             async function ejecutarAccion(accion, btn) {
                 const textos = {
                     airsonic:    { original: '<span class="btn-icon">🔄</span> Actualizar Airsonic',    loading: '⏳ Actualizando...' },

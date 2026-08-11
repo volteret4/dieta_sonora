@@ -302,6 +302,44 @@ def eliminar_grupo_de_datos(group_id):
     return False
 
 
+def eliminar_grupos_de_datos(group_ids: list) -> list:
+    """Igual que eliminar_grupo_de_datos pero para varios groupId a la vez,
+    en una sola lectura/escritura de JSON+CSV. Devuelve [(artist, album), ...]
+    de los álbumes que efectivamente se han quedado sin grupos (para poder
+    borrar también su VTODO en Radicale)."""
+    wanted = {str(g).strip() for g in group_ids}
+    with open(DATA_JSON, "r", encoding="utf-8") as f:
+        json_data = json.load(f)
+
+    removed = []
+    new_json_data = []
+    for album in json_data:
+        original_len = len(album["groups"])
+        album["groups"] = [g for g in album["groups"] if str(g.get("groupId")).strip() not in wanted]
+        if len(album["groups"]) < original_len and len(album["groups"]) == 0:
+            removed.append((album["artist"], album["album"]))
+        if len(album["groups"]) > 0:
+            new_json_data.append(album)
+
+    if not removed:
+        return []
+
+    with open(DATA_JSON, "w", encoding="utf-8") as f:
+        json.dump(new_json_data, f, ensure_ascii=False, indent=2)
+    existing_types = _read_csv_types()
+    rows = []
+    for a in new_json_data:
+        if a["groups"]:
+            key = (_normalize(a["artist"]), _normalize(a["album"]))
+            rows.append({"artist": a["artist"], "album": a["album"],
+                          "type": existing_types.get(key, "vevent")})
+    with open(CSV_FILE, "w", newline='', encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=["artist", "album", "type"])
+        writer.writeheader()
+        writer.writerows(rows)
+    return removed
+
+
 def delete_vtodo_in_radicale(artist: str, album: str) -> bool:
     """Busca el VTODO de 'artist — album' en Radicale y lo elimina."""
     if not RADICALE_URL or not CALENDAR_TASKS:
@@ -473,6 +511,22 @@ def delete_album():
         else:
             msg += " (VTODO no encontrado en Radicale)"
     return jsonify({"success": True, "message": msg})
+
+
+@app.route('/api/delete-bulk', methods=['POST'])
+def delete_albums_bulk():
+    data = request.json
+    group_ids = data.get('groupIds') or []
+    if not group_ids:
+        return jsonify({"error": "No se han indicado álbumes"}), 400
+
+    removed = eliminar_grupos_de_datos(group_ids)
+    if not removed:
+        return jsonify({"error": "Ningún álbum encontrado"}), 404
+
+    vtodos_ok = sum(1 for artist, album in removed if delete_vtodo_in_radicale(artist, album))
+    msg = f"{len(removed)} álbum(es) eliminado(s) correctamente ({vtodos_ok} VTODO(s) eliminados de Radicale)"
+    return jsonify({"success": True, "deleted": len(removed), "message": msg})
 
 
 @app.route('/api/download', methods=['POST'])
