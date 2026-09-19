@@ -70,6 +70,7 @@ than ignoring them) and additively migrates in `days_release_to_listened`.
 ## Key Invariants
 
 - **Date chain**: `release_date ≤ listened_date` — `_sanitize_chain()` in `cal_to_estadisticas.py` drops a `listened_date` earlier than `release_date` (treated as a bad Last.fm match, e.g. an earlier edition's scrobble).
+- **2007 cutoff at export time**: `extraer_estadisticas.py::export_json()` excludes albums with `release_date < LASTFM_LAUNCH_DATE` ("2007-01-01") from `data.json` — Last.fm (the source of `listened_date`) didn't exist before then, so a pre-2007 release's `days_release_to_listened` measures "how long has Last.fm existed" rather than actual listening behavior, skewing the dashboard's averages/charts (confirmed in production: pre-2007 albums showed 19,000+ day gaps). Albums with unknown (`NULL`) `release_date` are kept — no way to tell which side of 2007 they fall on. This filter lives only in the export step — `music_stats.db` itself keeps every album, so nothing here is destructive or hard to revert.
 - **Dedup key**: `(_normalize(artist), _normalize(album))` — NFD + lowercase + collapse whitespace + strip combining marks
 - **VTODO is source of truth**: `cal_to_estadisticas.py` iterates VTODOs, not VEVENTs; VEVENTs are only cross-referenced for `release_date`. A VEVENT with no VTODO at all never enters the tracking loop — that's what `airsonic_checker.py`/`qbittorrent_checker.py` are for (anchor-VTODO creation).
 
