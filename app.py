@@ -5,6 +5,7 @@ import shutil
 import glob
 import json
 import csv
+import sqlite3
 import uuid
 from datetime import datetime, date, timedelta
 import logging
@@ -52,6 +53,11 @@ LASTFM_INFO_CACHE = os.path.join(APP_DIR, "lastfm_info_cache.json")
 SCRIPT_CALENDARIO = os.path.join(APP_DIR, "main.sh")
 SCRIPT_ESCUCHADOS = os.path.join(APP_DIR, "tools", "discos_escuchados_calendario.py")
 AIRSONIC_URL = os.getenv('AIRSONIC_URL', '')
+# artist_sync.db de services/artist-sync (:ro) -- mismo uso que en
+# revisor_calendario.py, ver comentario ahí. Se relee en cada /api/albums
+# (barato, ~2000 filas locales) para no servir un filtro obsoleto si
+# artist-sync resincroniza mientras este contenedor sigue corriendo.
+ARTIST_SYNC_DB = os.getenv('ARTIST_SYNC_DB', '/data/artist_sync.db')
 
 RADICALE_URL   = os.getenv('RADICALE_URL', '').rstrip('/')
 RADICALE_USER  = os.getenv('RADICALE_USERNAME', '')
@@ -233,9 +239,26 @@ conversion_status = {
 # -----------------------------------------------------------------------------
 
 def _normalize(s: str) -> str:
+    s = re.sub(r'\s*\(\d+\)\s*$', '', s.strip())
     s = re.sub(r'\s+', ' ', s.strip().lower())
     s = unicodedata.normalize('NFD', s)
     return ''.join(c for c in s if unicodedata.category(c) != 'Mn')
+
+
+def _load_muspy_followed() -> set[str] | None:
+    """{_normalize(name)} de artistas seguidos en Muspy (artist_sync.db),
+    o None si el archivo no existe (no filtrar). Ver revisor_calendario.py."""
+    if not os.path.isfile(ARTIST_SYNC_DB):
+        return None
+    conn = sqlite3.connect(f'file:{ARTIST_SYNC_DB}?mode=ro&immutable=1', uri=True)
+    try:
+        rows = conn.execute(
+            "SELECT a.name FROM artists a "
+            "JOIN presence p ON p.artist_id = a.id WHERE p.source = 'muspy'"
+        ).fetchall()
+    finally:
+        conn.close()
+    return {_normalize(row[0]) for row in rows}
 
 def _parse_summary(summary: str) -> tuple[str, str]:
     summary = re.sub(r'^[\U00010000-\U0010ffff\u2000-\u2bff\u2600-\u26ff\u2700-\u27bf\s]+|[\U00010000-\U0010ffff\u2000-\u2bff\u2600-\u26ff\u2700-\u27bf\s]+$', '', summary).strip()
@@ -470,6 +493,17 @@ def api_albums():
     for album in json_data:
         key = (_normalize(album.get('artist', '')), _normalize(album.get('album', '')))
         album['type'] = tipos.get(key, 'vevent')
+    # resultado_flacs.json acumula entradas indefinidamente (solo se podan al
+    # marcarlas como ya tenidas) -- un álbum "vevent" cuyo artista dejó de
+    # seguirse en Muspy (o nunca lo estuvo, ver revisor_calendario.py) se
+    # queda aquí para siempre aunque ya no esté en el albums.csv del día. Se
+    # descarta aquí, en lectura, en vez de purgar el JSON.
+    muspy_followed = _load_muspy_followed()
+    if muspy_followed is not None:
+        json_data = [
+            album for album in json_data
+            if album['type'] != 'vevent' or _normalize(album.get('artist', '')) in muspy_followed
+        ]
     return jsonify(json_data)
 
 
