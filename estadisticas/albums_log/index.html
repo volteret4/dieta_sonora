@@ -532,8 +532,8 @@
                         { className: "badge badge-na" },
                         "—",
                     );
-                // Negativo = escuchado antes del lanzamiento: dato roto, no
-                // un tránsito rápido -- badge-ok con "-Nd" leía como bueno.
+                // Negativo = escuchado antes de "comprado": dato roto, no un
+                // tránsito rápido -- badge-ok con "-Nd" leía como algo bueno.
                 const cls = v < 0 ? "badge-error" : v <= 14 ? "badge-ok" : "badge-warn";
                 return React.createElement(
                     "span",
@@ -687,6 +687,12 @@
                             name: `${a.artist} — ${a.album}`,
                         }));
                 }, [filtered]);
+
+                // Series por mes -- ya vienen agregadas desde export_json(),
+                // sobre TODO el histórico (no se filtran por artista/género:
+                // son series de tiempo, no del pipeline de pendientes).
+                const monthlyPromptness = data?.monthly_promptness || [];
+                const monthlyOldVsNew = data?.monthly_old_vs_new || [];
 
                 function toggleSort(key) {
                     if (sortKey === key) setSortAsc((v) => !v);
@@ -1071,6 +1077,201 @@
                                             data: scatter,
                                             fill: C.gold,
                                             opacity: 0.7,
+                                        }),
+                                    ),
+                                ),
+                            ),
+
+                        // RAPIDEZ DE ESCUCHA POR MES
+                        monthlyPromptness.length > 0 &&
+                            React.createElement(
+                                "div",
+                                {
+                                    className: "chart-card full",
+                                    style: { marginBottom: 24 },
+                                },
+                                React.createElement(
+                                    "div",
+                                    { className: "section-title" },
+                                    "Rapidez de escucha por mes",
+                                    React.createElement(
+                                        "span",
+                                        { className: "tag" },
+                                        "media días lanz→escucha",
+                                    ),
+                                ),
+                                React.createElement(
+                                    ResponsiveContainer,
+                                    { width: "100%", height: 220 },
+                                    React.createElement(
+                                        LineChart,
+                                        {
+                                            data: monthlyPromptness,
+                                            margin: {
+                                                top: 5,
+                                                right: 20,
+                                                bottom: 10,
+                                                left: 0,
+                                            },
+                                        },
+                                        React.createElement(CartesianGrid, {
+                                            strokeDasharray: "3 3",
+                                            stroke: C.border,
+                                        }),
+                                        React.createElement(XAxis, {
+                                            dataKey: "month",
+                                            tick: { fill: C.dim, fontSize: 10 },
+                                        }),
+                                        React.createElement(YAxis, {
+                                            tick: { fill: C.dim, fontSize: 10 },
+                                            unit: "d",
+                                        }),
+                                        React.createElement(Tooltip, {
+                                            content: ({ active, payload, label }) => {
+                                                if (!active || !payload?.[0])
+                                                    return null;
+                                                const d = payload[0].payload;
+                                                return React.createElement(
+                                                    "div",
+                                                    { className: "custom-tooltip" },
+                                                    React.createElement(
+                                                        "div",
+                                                        { className: "ct-label" },
+                                                        label,
+                                                    ),
+                                                    React.createElement(
+                                                        "div",
+                                                        { className: "ct-row" },
+                                                        `Media: ${d.avg_days}d`,
+                                                    ),
+                                                    React.createElement(
+                                                        "div",
+                                                        { className: "ct-row" },
+                                                        `${d.n} álbum(es)`,
+                                                    ),
+                                                );
+                                            },
+                                        }),
+                                        React.createElement(Line, {
+                                            type: "monotone",
+                                            dataKey: "avg_days",
+                                            stroke: C.teal,
+                                            dot: false,
+                                            strokeWidth: 2,
+                                        }),
+                                    ),
+                                ),
+                            ),
+
+                        // MÚSICA ANTIGUA VS ACTUAL POR MES
+                        monthlyOldVsNew.length > 0 &&
+                            React.createElement(
+                                "div",
+                                {
+                                    className: "chart-card full",
+                                    style: { marginBottom: 24 },
+                                },
+                                React.createElement(
+                                    "div",
+                                    { className: "section-title" },
+                                    "Música antigua vs actual por mes",
+                                    React.createElement(
+                                        "span",
+                                        { className: "tag" },
+                                        "% escuchas de lanzamientos recientes (≤2 años)",
+                                    ),
+                                ),
+                                React.createElement(
+                                    "div",
+                                    {
+                                        style: {
+                                            fontSize: 11,
+                                            color: C.dim,
+                                            marginBottom: 8,
+                                        },
+                                    },
+                                    "Basado en TODO el historial de scrobbles, no solo en los álbumes de la lista de pendientes. El año de lanzamiento se rellena poco a poco en segundo plano (enrich_scrobble_years.py) — pasa el ratón por un punto para ver qué % de los scrobbles de ese mes ya tienen año conocido.",
+                                ),
+                                React.createElement(
+                                    ResponsiveContainer,
+                                    { width: "100%", height: 220 },
+                                    React.createElement(
+                                        LineChart,
+                                        {
+                                            data: monthlyOldVsNew,
+                                            margin: {
+                                                top: 5,
+                                                right: 20,
+                                                bottom: 10,
+                                                left: 0,
+                                            },
+                                        },
+                                        React.createElement(CartesianGrid, {
+                                            strokeDasharray: "3 3",
+                                            stroke: C.border,
+                                        }),
+                                        React.createElement(XAxis, {
+                                            dataKey: "month",
+                                            tick: { fill: C.dim, fontSize: 10 },
+                                        }),
+                                        React.createElement(YAxis, {
+                                            tick: { fill: C.dim, fontSize: 10 },
+                                            unit: "%",
+                                            domain: [0, 100],
+                                        }),
+                                        React.createElement(Tooltip, {
+                                            content: ({ active, payload, label }) => {
+                                                if (!active || !payload?.[0])
+                                                    return null;
+                                                const d = payload[0].payload;
+                                                if (d.pct_recent == null)
+                                                    return React.createElement(
+                                                        "div",
+                                                        { className: "custom-tooltip" },
+                                                        React.createElement(
+                                                            "div",
+                                                            { className: "ct-label" },
+                                                            label,
+                                                        ),
+                                                        React.createElement(
+                                                            "div",
+                                                            { className: "ct-row" },
+                                                            "Sin años conocidos aún",
+                                                        ),
+                                                    );
+                                                return React.createElement(
+                                                    "div",
+                                                    { className: "custom-tooltip" },
+                                                    React.createElement(
+                                                        "div",
+                                                        { className: "ct-label" },
+                                                        label,
+                                                    ),
+                                                    React.createElement(
+                                                        "div",
+                                                        { className: "ct-row" },
+                                                        `${d.pct_recent}% reciente`,
+                                                    ),
+                                                    React.createElement(
+                                                        "div",
+                                                        { className: "ct-row" },
+                                                        `Edad media: ${d.avg_age} años`,
+                                                    ),
+                                                    React.createElement(
+                                                        "div",
+                                                        { className: "ct-row" },
+                                                        `Cobertura: ${d.coverage_pct}% de ${d.total_scrobbles} scrobbles`,
+                                                    ),
+                                                );
+                                            },
+                                        }),
+                                        React.createElement(Line, {
+                                            type: "monotone",
+                                            dataKey: "pct_recent",
+                                            stroke: C.purple,
+                                            dot: false,
+                                            strokeWidth: 2,
+                                            connectNulls: true,
                                         }),
                                     ),
                                 ),

@@ -18,7 +18,8 @@ date chains to be worth keeping.
 | `cal_to_estadisticas.py` | Main sync script: VTODO-driven, updates `music_stats.db`, marks COMPLETED via Last.fm scrobble matching |
 | `airsonic_checker.py` | Creates anchor VTODOs (no date) for VEVENTs without a task, if the album is found in Airsonic — just to get it into the tracking loop |
 | `qbittorrent_checker.py` | Same as above but checks qBittorrent |
-| `extraer_estadisticas.py` | Reads albums already in `music_stats.db` (synced there by `cal_to_estadisticas.py`) and fills in `genre_id` via MusicBrainz/Last.fm for whichever don't have one yet, then exports `data.json`. Does *not* touch CalDAV itself — an earlier version did its own broken CalDAV fetch (hardcoded empty `CALENDAR_PATH`, never matched the split VEVENT/VTODO calendars) and silently found 0 items every run, so genres never populated. |
+| `extraer_estadisticas.py` | Reads albums already in `music_stats.db` (synced there by `cal_to_estadisticas.py`) and fills in `genre_id` via MusicBrainz/Last.fm for whichever don't have one yet, then exports `data.json`. Does *not* touch CalDAV itself — an earlier version did its own broken CalDAV fetch (hardcoded empty `CALENDAR_PATH`, never matched the split VEVENT/VTODO calendars) and silently found 0 items every run, so genres never populated. Also computes `monthly_promptness` and `monthly_old_vs_new` for `data.json` (see below). |
+| `enrich_scrobble_years.py` | Backfills `scrobble_album_years` (in `music_stats.db`) with the release year of albums that appear in `lastfm_stats.db`'s full scrobble history — a much bigger universe (12712 distinct albums in production) than the ~745 tracked in `music_stats.db`'s own `albums` table. Feeds `monthly_old_vs_new`. Rate-limited like MusicBrainz genre lookups, processed by popularity (most-scrobbled first), `--limit` per run (cron: 2000/day). |
 | `sops_env.py` | SOPS+age bridge replacing `python-dotenv`; walks up directories to find `.encrypted.env` |
 
 ## Running Scripts
@@ -42,6 +43,11 @@ python qbittorrent_checker.py --since 365 --dry-run
 # Enrich genres from MusicBrainz/Last.fm for albums that don't have one yet
 # (reads music_stats.db directly, no CalDAV fetch of its own)
 python extraer_estadisticas.py
+
+# Backfill release years for the full scrobble history (music antigua vs
+# actual por mes) -- corre a diario vía Ofelia con --limit 2000, se puede
+# lanzar a mano con un límite mayor/menor
+python enrich_scrobble_years.py --limit 2000
 ```
 
 ## Secret Loading
@@ -65,7 +71,11 @@ removed — `init_db()` in both `cal_to_estadisticas.py` and
 `extraer_estadisticas.py` leaves them in place (dropping columns is riskier
 than ignoring them) and additively migrates in `days_release_to_listened`.
 
-`lastfm_stats.db` — read-only input; must exist for listen-date detection. Schema: `artists(artist_id, name_normalized)`, `scrobbles(artist_id, track_normalized, ts, ts_iso)`. Mounted `:ro` — open with `mode=ro&immutable=1` (see `cal_to_estadisticas.py`), plain `mode=ro` isn't enough because the DB is in WAL mode and even a reader needs to touch the `-shm` file.
+`lastfm_stats.db` — read-only input; must exist for listen-date detection. Schema: `artists(artist_id, name, name_normalized)`, `albums(album_id, artist_id, name, name_normalized)` — **no release-year column**, hence `scrobble_album_years` below — `scrobbles(scrobble_id, artist_id, album_id NULLABLE, track, track_normalized, ts, ts_iso, source)`. Mounted `:ro` — open with `mode=ro&immutable=1` (see `cal_to_estadisticas.py`), plain `mode=ro` isn't enough because the DB is in WAL mode and even a reader needs to touch the `-shm` file.
+
+`scrobble_album_years` (in `music_stats.db`, written by `enrich_scrobble_years.py`, read by `extraer_estadisticas.py::compute_monthly_old_vs_new()`): `lastfm_album_id` (PK, `album_id` from `lastfm_stats.db` — no real FK across DB files, just a stable join key), `artist`, `album` (denormalized, for debugging), `release_year` (`NULL` = looked up, MusicBrainz had nothing usable — **not** the same as "not yet looked up", see below), `fetched_at`.
+
+**Never cache `release_year = NULL` on a request error** (timeout, MusicBrainz 503 under load — happens often enough in practice, ~14% of requests in one production run) — only when MusicBrainz responded but had no usable `first-release-date`. `enrich_scrobble_years.py::main()` keeps a request-error out of the `INSERT` entirely so it's retried next run; conflating "MusicBrainz said no" with "the request failed" would silently and permanently blacklist albums that simply hit a flaky moment.
 
 ## Key Invariants
 
@@ -73,6 +83,27 @@ than ignoring them) and additively migrates in `days_release_to_listened`.
 - **2007 cutoff at export time**: `extraer_estadisticas.py::export_json()` excludes albums with `release_date < LASTFM_LAUNCH_DATE` ("2007-01-01") from `data.json` — Last.fm (the source of `listened_date`) didn't exist before then, so a pre-2007 release's `days_release_to_listened` measures "how long has Last.fm existed" rather than actual listening behavior, skewing the dashboard's averages/charts (confirmed in production: pre-2007 albums showed 19,000+ day gaps). Albums with unknown (`NULL`) `release_date` are kept — no way to tell which side of 2007 they fall on. This filter lives only in the export step — `music_stats.db` itself keeps every album, so nothing here is destructive or hard to revert.
 - **Dedup key**: `(_normalize(artist), _normalize(album))` — NFD + lowercase + collapse whitespace + strip combining marks
 - **VTODO is source of truth**: `cal_to_estadisticas.py` iterates VTODOs, not VEVENTs; VEVENTs are only cross-referenced for `release_date`. A VEVENT with no VTODO at all never enters the tracking loop — that's what `airsonic_checker.py`/`qbittorrent_checker.py` are for (anchor-VTODO creation).
+
+## Gráficas por mes (monthly_promptness / monthly_old_vs_new)
+
+- `monthly_promptness`: media de `days_release_to_listened` agrupada por
+  mes de `listened_date`, solo sobre `albums` de `music_stats.db` (mismo
+  corte de 2007 que el resto del dashboard) — "¿en qué épocas escuchaba
+  lo nuevo rápido vs se acumulaba sin escuchar?".
+- `monthly_old_vs_new`: agrupa **todo** el historial de scrobbles (no
+  solo lo trackeado) por mes de escucha, cruzando con
+  `scrobble_album_years` — `avg_age` (años entre lanzamiento y escucha),
+  `pct_recent` (% de scrobbles de álbumes lanzados ≤2 años antes) y
+  `coverage_pct` (% de los scrobbles de ese mes cuyo álbum ya tiene año
+  cacheado). **`coverage_pct` es información esencial, no accesoria**: el
+  backfill de `enrich_scrobble_years.py` es incremental (días/semanas),
+  así que un mes con `coverage_pct` bajo tiene un `avg_age`/`pct_recent`
+  poco fiable (muestra pequeña) aunque el dato exista — la UI lo muestra
+  en el tooltip en vez de ocultarlo, para no dar una falsa sensación de
+  precisión con datos aún incompletos.
+- `estadisticas.html` e `index.html` son **casi archivos duplicados**
+  (ambos servidos por `server.py`, `/` → `index.html`) — cualquier cambio
+  de UI (como estas dos gráficas) hay que aplicarlo a los dos.
 
 ## CalDAV Write Operations
 
