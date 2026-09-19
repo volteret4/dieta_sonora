@@ -19,6 +19,8 @@ import unicodedata
 from datetime import date, datetime, timedelta
 from xml.etree import ElementTree as ET
 
+import sqlite3
+
 import requests
 from icalendar import Calendar
 from tools.sops_env import load_sops_env
@@ -36,13 +38,42 @@ RADICALE_BASE  = os.getenv('RADICALE_CALENDAR', '').rstrip('/')
 CALENDAR_NAME  = os.getenv('CALENDAR_NAME',     '')
 CALENDAR_TASKS = os.getenv('CALENDAR_TASKS',    '')
 
+# services/artist-sync mantiene artist_sync.db con los artistas seguidos en
+# Muspy (resincronizado a diario ahí) -- se reutiliza en modo lectura para
+# filtrar el calendario "seguidos" en vez de duplicar la integración con la
+# API de Muspy aquí. Si el archivo no existe (p. ej. artist-sync no está
+# desplegado) no se filtra nada, para no dejar la pestaña "Seguidos" vacía
+# por un mount que falta.
+ARTIST_SYNC_DB = os.getenv('ARTIST_SYNC_DB', '/data/artist_sync.db')
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _normalize(s: str) -> str:
+    # " (4)" al final es el sufijo de desambiguación de MusicBrainz que
+    # algunos VEVENT traen pegado al nombre del artista -- se quita para
+    # poder cruzar contra el nombre "limpio" de artist_sync.db.
+    s = re.sub(r'\s*\(\d+\)\s*$', '', s.strip())
     s = re.sub(r'\s+', ' ', s.strip().lower())
     s = unicodedata.normalize('NFD', s)
     return ''.join(c for c in s if unicodedata.category(c) != 'Mn')
+
+
+def _load_muspy_followed() -> set[str] | None:
+    """{_normalize(name)} de artistas con presence.source='muspy' en
+    artist_sync.db, o None si el archivo no existe (no filtrar)."""
+    if not os.path.isfile(ARTIST_SYNC_DB):
+        print(f'⚠️  {ARTIST_SYNC_DB} no encontrado -- no se filtra por Muspy')
+        return None
+    conn = sqlite3.connect(f'file:{ARTIST_SYNC_DB}?mode=ro&immutable=1', uri=True)
+    try:
+        rows = conn.execute(
+            "SELECT a.name FROM artists a "
+            "JOIN presence p ON p.artist_id = a.id WHERE p.source = 'muspy'"
+        ).fetchall()
+    finally:
+        conn.close()
+    return {_normalize(row[0]) for row in rows}
 
 
 def _strip_emojis(s: str) -> str:
@@ -144,9 +175,14 @@ def main():
             if album:
                 task_keys.add((_normalize(artist), _normalize(album)))
 
+    muspy_followed = _load_muspy_followed()
+    if muspy_followed is not None:
+        print(f'🎯 {len(muspy_followed)} artistas seguidos en Muspy (filtro activo)')
+
     # Filtrar VEVENTs sin VTODO
     pending: list[tuple[str, str]] = []
     seen: set[tuple] = set()
+    skipped_not_followed = 0
     for item in raw_events:
         try:
             cal = Calendar.from_ical(item['ical_text'])
@@ -167,8 +203,15 @@ def main():
             if key in task_keys or key in seen:
                 continue
 
+            if muspy_followed is not None and _normalize(artist) not in muspy_followed:
+                skipped_not_followed += 1
+                continue
+
             seen.add(key)
             pending.append((artist, album))
+
+    if muspy_followed is not None:
+        print(f'   {skipped_not_followed} descartados por no seguirse en Muspy')
 
     # Escribir CSV (snapshot limpio)
     with open(args.output, 'w', newline='', encoding='utf-8') as f:
