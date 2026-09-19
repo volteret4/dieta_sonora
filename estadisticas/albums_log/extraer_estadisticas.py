@@ -42,6 +42,13 @@ MB_RATE_LIMIT     = 1.1   # seconds between MusicBrainz requests
 # (NULL) se mantienen, no se sabe si son de antes o de después.
 LASTFM_LAUNCH_DATE = "2007-01-01"
 
+# Historial completo de scrobbles (no solo los álbumes trackeados en
+# music_stats.db) -- usado para "monthly_old_vs_new" en export_json(),
+# cruzado con el año de lanzamiento que cachea enrich_scrobble_years.py
+# en scrobble_album_years. Mismo archivo/patrón que ya usa
+# cal_to_estadisticas.py.
+LASTFM_DB         = os.getenv("LASTFM_DB", "lastfm_stats.db")
+
 LASTFM_API_KEY    = os.getenv("LASTFM_API_KEY")
 
 # Tags that are release types or too generic to be useful as genres
@@ -85,6 +92,19 @@ CREATE TABLE IF NOT EXISTS albums (
     listened_date             TEXT,
     days_release_to_listened  INTEGER,
     UNIQUE(artist_id, name_normalized)
+);
+
+-- Rellenada por enrich_scrobble_years.py (script aparte, universo mucho
+-- más grande que `albums` de arriba -- todo lo escuchado, no solo lo
+-- trackeado vía Radicale). Declarada también aquí para que export_json()
+-- no falle si este script corre antes de que enrich_scrobble_years.py
+-- haya creado la tabla por primera vez.
+CREATE TABLE IF NOT EXISTS scrobble_album_years (
+    lastfm_album_id  INTEGER PRIMARY KEY,
+    artist           TEXT NOT NULL,
+    album            TEXT NOT NULL,
+    release_year     INTEGER,
+    fetched_at       TEXT NOT NULL
 );
 """
 
@@ -351,6 +371,97 @@ def get_genre_from_musicbrainz(artist: str, album: str) -> Optional[str]:
     return genre
 
 # ─────────────────────────────────────────────
+#  ESTADÍSTICAS POR MES
+# ─────────────────────────────────────────────
+
+def compute_monthly_promptness(conn: sqlite3.Connection) -> list[dict]:
+    """Media de days_release_to_listened agrupada por mes de escucha --
+    en qué épocas se escuchaba lo nuevo rápido vs se acumulaba sin
+    escuchar. Mismo corte de LASTFM_LAUNCH_DATE que el resto del
+    dashboard, y se descartan cadenas negativas (dato roto, ver
+    _sanitize_chain en cal_to_estadisticas.py)."""
+    rows = conn.execute("""
+        SELECT strftime('%Y-%m', listened_date) AS month,
+               AVG(days_release_to_listened)     AS avg_days,
+               COUNT(*)                          AS n
+        FROM   albums
+        WHERE  listened_date IS NOT NULL
+           AND days_release_to_listened >= 0
+           AND (release_date IS NULL OR release_date >= ?)
+        GROUP  BY month
+        ORDER  BY month
+    """, (LASTFM_LAUNCH_DATE,)).fetchall()
+    return [{"month": m, "avg_days": round(d, 1), "n": n} for m, d, n in rows]
+
+
+def compute_monthly_old_vs_new(lastfm_db_path: str, music_conn: sqlite3.Connection) -> list[dict]:
+    """Por mes de escucha (todo el historial de scrobbles, no solo lo
+    trackeado en `albums`): edad media del álbum escuchado
+    (año del scrobble - año de lanzamiento, vía scrobble_album_years,
+    rellenada aparte por enrich_scrobble_years.py) y qué % eran
+    lanzamientos "recientes" (<=2 años). coverage_pct indica qué
+    proporción de los scrobbles de ese mes ya tienen año conocido --
+    el backfill es incremental, así que puede ser bajo al principio en
+    los meses con menos cobertura todavía."""
+    if not os.path.exists(lastfm_db_path):
+        return []
+
+    years = {
+        row[0]: row[1]
+        for row in music_conn.execute(
+            "SELECT lastfm_album_id, release_year FROM scrobble_album_years WHERE release_year IS NOT NULL"
+        )
+    }
+    if not years:
+        return []
+
+    lastfm_conn = sqlite3.connect(f"file:{lastfm_db_path}?mode=ro&immutable=1", uri=True)
+    try:
+        scrobbles = lastfm_conn.execute(
+            "SELECT album_id, ts_iso FROM scrobbles WHERE album_id IS NOT NULL"
+        ).fetchall()
+    finally:
+        lastfm_conn.close()
+
+    buckets: dict[str, dict] = {}
+    for album_id, ts_iso in scrobbles:
+        try:
+            listened_dt = datetime.fromisoformat(ts_iso)
+        except Exception:
+            continue
+        month = listened_dt.strftime("%Y-%m")
+        b = buckets.setdefault(month, {"total": 0, "covered": 0, "ages": [], "recent": 0})
+        b["total"] += 1
+
+        release_year = years.get(album_id)
+        if release_year is None:
+            continue
+        age = listened_dt.year - release_year
+        if age < 0:
+            continue  # dato de MusicBrainz sospechoso, mismo criterio que _sanitize_chain
+        b["covered"] += 1
+        b["ages"].append(age)
+        if age <= 2:
+            b["recent"] += 1
+
+    result = []
+    for month in sorted(buckets):
+        b = buckets[month]
+        if not b["covered"]:
+            result.append({"month": month, "avg_age": None, "pct_recent": None,
+                            "coverage_pct": 0.0, "total_scrobbles": b["total"]})
+            continue
+        result.append({
+            "month": month,
+            "avg_age": round(sum(b["ages"]) / len(b["ages"]), 1),
+            "pct_recent": round(100 * b["recent"] / b["covered"], 1),
+            "coverage_pct": round(100 * b["covered"] / b["total"], 1),
+            "total_scrobbles": b["total"],
+        })
+    return result
+
+
+# ─────────────────────────────────────────────
 #  JSON EXPORT
 # ─────────────────────────────────────────────
 
@@ -403,15 +514,21 @@ def export_json(conn: sqlite3.Connection, path: str):
     genres = [dict(zip([d[0] for d in genres_cur.description], row))
               for row in genres_cur.fetchall()]
 
+    monthly_promptness = compute_monthly_promptness(conn)
+    monthly_old_vs_new = compute_monthly_old_vs_new(LASTFM_DB, conn)
+
     with open(path, "w", encoding="utf-8") as f:
         json.dump({
-            "albums":       albums,
-            "artists":      artists,
-            "genres":       genres,
-            "generated_at": datetime.now().isoformat(),
+            "albums":              albums,
+            "artists":             artists,
+            "genres":              genres,
+            "monthly_promptness":  monthly_promptness,
+            "monthly_old_vs_new":  monthly_old_vs_new,
+            "generated_at":        datetime.now().isoformat(),
         }, f, ensure_ascii=False, indent=2)
 
-    print(f"  Exported {len(albums)} albums · {len(artists)} artists · {len(genres)} genres → {path}")
+    print(f"  Exported {len(albums)} albums · {len(artists)} artists · {len(genres)} genres · "
+          f"{len(monthly_promptness)} meses (rapidez) · {len(monthly_old_vs_new)} meses (antiguo/actual) → {path}")
 
 
 # ─────────────────────────────────────────────
