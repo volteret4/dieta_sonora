@@ -33,6 +33,15 @@ JSON_PATH         = "data.json"  # nombre que de verdad fetchea la web (antes "s
 MUSICBRAINZ_UA    = "MusicCalendarExtractor/1.0 (your@email.com)"
 MB_RATE_LIMIT     = 1.1   # seconds between MusicBrainz requests
 
+# Last.fm (fuente de listened_date vía scrobbles) nace en 2007 -- un álbum
+# lanzado antes de esa fecha no pudo tener un scrobble real cerca de su
+# lanzamiento, así que days_release_to_listened para esos discos no mide
+# "cuánto tardé en escucharlo" sino "cuánto hace que existe Last.fm", lo
+# que descuadra las medias/gráficas (Lanz→Escucha por artista/género,
+# scatter). Se excluyen del dashboard -- los de release_date desconocida
+# (NULL) se mantienen, no se sabe si son de antes o de después.
+LASTFM_LAUNCH_DATE = "2007-01-01"
+
 LASTFM_API_KEY    = os.getenv("LASTFM_API_KEY")
 
 # Tags that are release types or too generic to be useful as genres
@@ -363,8 +372,9 @@ def export_json(conn: sqlite3.Connection, path: str):
         FROM   albums  al
         JOIN   artists ar ON ar.artist_id = al.artist_id
         LEFT   JOIN genres  g  ON g.genre_id  = al.genre_id
+        WHERE  al.release_date IS NULL OR al.release_date >= ?
         ORDER  BY al.release_date DESC NULLS LAST
-    """)
+    """, (LASTFM_LAUNCH_DATE,))
     cols = [d[0] for d in cur.description]
     albums = [dict(zip(cols, row)) for row in cur.fetchall()]
 
