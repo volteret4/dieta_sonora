@@ -6,6 +6,7 @@ servidor (no abrirse como file://). Genera data.json/stats.json con
 extraer_estadisticas.py o cal_to_estadisticas.py antes de usarlo.
 """
 import os
+import subprocess
 from pathlib import Path
 from flask import Flask, abort, jsonify, request, send_from_directory
 
@@ -70,6 +71,21 @@ VARS_SPEC = [
     {"name": "QB_PASS", "secret": True, "help": "Contraseña qBittorrent"},
 ]
 _HAS_SECRETS = any(v.get("secret") for v in VARS_SPEC)
+
+# ── Botón "actualizar" (panel ⚙) ─────────────────────────────────────────────
+# Mismos comandos que ya lanza Ofelia vía docker exec (ver
+# ofelia.job-exec.dieta-sonora-stats-* en docker-compose.yml) -- duplicado
+# a propósito, el contenedor no tiene forma de leer esas labels en runtime.
+# -daily entra también en el tier "actualizar todos" de index/app.py; los
+# otros dos son enriquecimientos lentos (hasta 30 min), solo botón manual.
+JOBS = [
+    {"id": "dieta-sonora-stats-daily", "label": "Actualizar estadísticas",
+     "cmd": ["bash", "main.sh"], "timeout": 300},
+    {"id": "dieta-sonora-stats-genres", "label": "Enriquecer géneros (MusicBrainz)",
+     "cmd": ["python3", "extraer_estadisticas.py"], "timeout": 1800},
+    {"id": "dieta-sonora-stats-scrobble-years", "label": "Años de lanzamiento (scrobbles)",
+     "cmd": ["python3", "enrich_scrobble_years.py", "--limit", "2000"], "timeout": 1800},
+]
 
 
 def _read_env_file(path):
@@ -142,7 +158,8 @@ def api_settings():
         {"name": v["name"], "value": _current_value(v), "secret": v["secret"], "help": v.get("help", "")}
         for v in VARS_SPEC
     ]
-    return jsonify({"requires_password": requires, "authorized": True, "vars": vars_out})
+    jobs_out = [{"id": j["id"], "label": j["label"]} for j in JOBS]
+    return jsonify({"requires_password": requires, "authorized": True, "vars": vars_out, "jobs": jobs_out})
 
 
 @app.route("/api/settings/save", methods=["POST"])
@@ -156,6 +173,27 @@ def api_settings_save():
         return jsonify({"error": "Nada que guardar"}), 400
     _write_env_file(SETTINGS_ENV_PATH, updates)
     return jsonify({"ok": True, "message": "Guardado. Reinicia el contenedor para aplicar los cambios."})
+
+
+@app.route("/api/jobs/run", methods=["POST"])
+def api_jobs_run():
+    # Sin contraseña: no toca secretos, solo relanza a mano un sync que ya
+    # corre solo a diario (mismo criterio que /api/calendario en
+    # services/dieta_sonora/app.py).
+    job_id = (request.get_json(silent=True) or {}).get("job")
+    job = next((j for j in JOBS if j["id"] == job_id), None)
+    if not job:
+        return jsonify({"error": "Job desconocido"}), 404
+    try:
+        res = subprocess.run(
+            job["cmd"], cwd=str(BASE_DIR),
+            capture_output=True, text=True, timeout=job["timeout"],
+        )
+        if res.returncode != 0:
+            return jsonify({"error": res.stderr[-2000:] or "Error ejecutando el job"}), 500
+        return jsonify({"ok": True, "message": f"{job['label']} completado"})
+    except subprocess.TimeoutExpired:
+        return jsonify({"error": f"Tardó más de {job['timeout']}s"}), 500
 
 
 if __name__ == "__main__":

@@ -2,13 +2,21 @@
  * Panel de configuración compartido de tumtumpa. Archivo IDÉNTICO en cada
  * app (como theme-picker.js). Inyecta un botón de engranaje fijo que abre
  * un modal con las variables configurables del servicio, leídas/escritas
- * vía POST /api/settings y POST /api/settings/save.
+ * vía POST /api/settings y POST /api/settings/save -- y, si el servicio
+ * declara jobs, una sección "Acciones" con un botón por job que relanza a
+ * mano el mismo comando que ya corre Ofelia por cron (ver
+ * /api/jobs/run más abajo).
  *
  * Contrato del backend:
  *   POST /api/settings         {password?} ->
- *     {requires_password, authorized, error?, vars: [{name, value, secret, help}]}
+ *     {requires_password, authorized, error?, vars: [{name, value, secret, help}],
+ *      jobs?: [{id, label}]}
  *   POST /api/settings/save    {password?, values: {NAME: "..."}} ->
  *     {ok: true, message} | {error}
+ *   POST /api/jobs/run         {job: "<id>"} ->
+ *     {ok: true, message} | {error}
+ *   -- /api/jobs/run no pide contraseña: no toca secretos, solo relanza
+ *   un sync que ya corre solo a diario.
  *
  * La contraseña solo se guarda en memoria (variable JS), nunca en
  * localStorage ni en la URL.
@@ -99,7 +107,7 @@
       renderPasswordForm(data.error);
       return;
     }
-    renderVarsForm(data.vars || []);
+    renderVarsForm(data.vars || [], data.jobs || []);
   }
 
   function renderPasswordForm(error) {
@@ -122,16 +130,59 @@
     p.focus();
   }
 
-  function renderVarsForm(vars) {
+  function renderJobsSection(jobs) {
+    if (!jobs.length) return;
+    var h2 = el('div', {
+      textContent: '⏵ Acciones',
+      style: 'font-weight:600;font-size:.78rem;margin-bottom:.4rem;color:var(--text-muted,#737880)',
+    });
+    box.appendChild(h2);
+    jobs.forEach(function (job) {
+      var wrap = el('div', { style: 'display:flex;align-items:center;gap:.5rem;margin-bottom:.5rem' });
+      var btn = el('button', { textContent: job.label || job.id });
+      btnStyle(btn, false);
+      Object.assign(btn.style, { flex: '1', textAlign: 'left' });
+      var status = el('span', { style: 'font-size:.72rem;min-height:1em' });
+      btn.addEventListener('click', async function () {
+        btn.disabled = true;
+        var original = btn.textContent;
+        btn.textContent = 'Ejecutando…';
+        status.textContent = '';
+        var r = await api('/api/jobs/run', { job: job.id });
+        btn.disabled = false;
+        btn.textContent = original;
+        if (r.error) {
+          status.textContent = '✗ ' + r.error;
+          status.style.color = 'var(--danger, #e07070)';
+        } else {
+          status.textContent = '✓ ' + (r.message || 'Hecho');
+          status.style.color = 'var(--success, #6fcf97)';
+        }
+      });
+      wrap.appendChild(btn);
+      wrap.appendChild(status);
+      box.appendChild(wrap);
+    });
+    box.appendChild(el('div', {
+      style: 'border-top:1px solid var(--border,#2e3340);margin:.6rem 0 .9rem',
+    }));
+  }
+
+  function renderVarsForm(vars, jobs) {
     box.innerHTML = '';
+    jobs = jobs || [];
     var h = el('div', { textContent: '⚙ Configuración', style: 'font-weight:600;margin-bottom:.7rem' });
     box.appendChild(h);
 
+    renderJobsSection(jobs);
+
     if (!vars.length) {
-      box.appendChild(el('div', {
-        textContent: 'Este servicio no tiene variables configurables.',
-        style: 'color:var(--text-muted,#737880)',
-      }));
+      if (!jobs.length) {
+        box.appendChild(el('div', {
+          textContent: 'Este servicio no tiene variables configurables.',
+          style: 'color:var(--text-muted,#737880)',
+        }));
+      }
       var closeRow = el('div', { style: 'display:flex;justify-content:flex-end;margin-top:1rem' });
       var closeBtn = el('button', { textContent: 'Cerrar' }); btnStyle(closeBtn, false);
       closeBtn.addEventListener('click', closePanel);
