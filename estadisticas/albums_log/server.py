@@ -6,6 +6,7 @@ servidor (no abrirse como file://). Genera data.json/stats.json con
 extraer_estadisticas.py o cal_to_estadisticas.py antes de usarlo.
 """
 import os
+import signal
 import subprocess
 from pathlib import Path
 from flask import Flask, abort, jsonify, request, send_from_directory
@@ -175,6 +176,28 @@ def api_settings_save():
     return jsonify({"ok": True, "message": "Guardado. Reinicia el contenedor para aplicar los cambios."})
 
 
+def _run_job_cmd(cmd, cwd, timeout):
+    """subprocess.run(timeout=...) solo mata al hijo directo (bash) -- sus
+    propios hijos (ej. el python3 que bash lanza dentro de main.sh) quedan
+    huérfanos y siguen corriendo indefinidamente (confirmado en producción:
+    un timeout dejó cal_to_estadisticas.py corriendo solo, y una segunda
+    llamada sin darse cuenta chocó con la primera -- dos procesos
+    escribiendo la misma SQLite a la vez, mucho más lento todavía).
+    start_new_session=True mete el proceso en su propio grupo; al hacer
+    timeout se mata el GRUPO entero con os.killpg, no solo el hijo directo."""
+    proc = subprocess.Popen(
+        cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, start_new_session=True,
+    )
+    try:
+        stdout, _ = proc.communicate(timeout=timeout)
+        return proc.returncode, stdout
+    except subprocess.TimeoutExpired:
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        proc.wait()
+        raise
+
+
 @app.route("/api/jobs/run", methods=["POST"])
 def api_jobs_run():
     # Sin contraseña: no toca secretos, solo relanza a mano un sync que ya
@@ -185,15 +208,12 @@ def api_jobs_run():
     if not job:
         return jsonify({"error": "Job desconocido"}), 404
     try:
-        res = subprocess.run(
-            job["cmd"], cwd=str(BASE_DIR),
-            capture_output=True, text=True, timeout=job["timeout"],
-        )
-        if res.returncode != 0:
-            return jsonify({"error": res.stderr[-2000:] or "Error ejecutando el job"}), 500
+        returncode, output = _run_job_cmd(job["cmd"], str(BASE_DIR), job["timeout"])
+        if returncode != 0:
+            return jsonify({"error": (output or "")[-2000:] or "Error ejecutando el job"}), 500
         return jsonify({"ok": True, "message": f"{job['label']} completado"})
     except subprocess.TimeoutExpired:
-        return jsonify({"error": f"Tardó más de {job['timeout']}s"}), 500
+        return jsonify({"error": f"Tardó más de {job['timeout']}s (proceso terminado)"}), 500
 
 
 if __name__ == "__main__":
