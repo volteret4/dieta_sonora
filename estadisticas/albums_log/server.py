@@ -78,14 +78,21 @@ _HAS_SECRETS = any(v.get("secret") for v in VARS_SPEC)
 # ofelia.job-exec.dieta-sonora-stats-* en docker-compose.yml) -- duplicado
 # a propósito, el contenedor no tiene forma de leer esas labels en runtime.
 # -daily entra también en el tier "actualizar todos" de index/app.py; los
-# otros dos son enriquecimientos lentos (hasta 30 min), solo botón manual.
+# otros dos son enriquecimientos lentos, solo botón manual.
+#
+# Timeouts medidos en los logs reales de Ofelia (docker logs ofelia), no a
+# ojo -- -daily tarda 34-40 min normalmente (airsonic/qbittorrent checkers +
+# cal_to_estadisticas.py, la mayor parte esperando red, no CPU: ~3s de CPU
+# en 20 min de reloj en una ejecución de prueba), -scrobble-years ~43 min.
+# 900s/1800s (los valores "razonables" a ojo) cortaban el job A MITAD
+# repetidamente en producción -- ver commit que sube esto a 3600s.
 JOBS = [
     {"id": "dieta-sonora-stats-daily", "label": "Actualizar estadísticas",
-     "cmd": ["bash", "main.sh"], "timeout": 900},
+     "cmd": ["bash", "main.sh"], "timeout": 3600},
     {"id": "dieta-sonora-stats-genres", "label": "Enriquecer géneros (MusicBrainz)",
-     "cmd": ["python3", "extraer_estadisticas.py"], "timeout": 1800},
+     "cmd": ["python3", "extraer_estadisticas.py"], "timeout": 3600},
     {"id": "dieta-sonora-stats-scrobble-years", "label": "Años de lanzamiento (scrobbles)",
-     "cmd": ["python3", "enrich_scrobble_years.py", "--limit", "2000"], "timeout": 1800},
+     "cmd": ["python3", "enrich_scrobble_years.py", "--limit", "2000"], "timeout": 3600},
 ]
 
 
