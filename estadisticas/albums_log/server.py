@@ -80,7 +80,7 @@ _HAS_SECRETS = any(v.get("secret") for v in VARS_SPEC)
 # otros dos son enriquecimientos lentos (hasta 30 min), solo botón manual.
 JOBS = [
     {"id": "dieta-sonora-stats-daily", "label": "Actualizar estadísticas",
-     "cmd": ["bash", "main.sh"], "timeout": 300},
+     "cmd": ["bash", "main.sh"], "timeout": 900},
     {"id": "dieta-sonora-stats-genres", "label": "Enriquecer géneros (MusicBrainz)",
      "cmd": ["python3", "extraer_estadisticas.py"], "timeout": 1800},
     {"id": "dieta-sonora-stats-scrobble-years", "label": "Años de lanzamiento (scrobbles)",
