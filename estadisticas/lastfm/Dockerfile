@@ -10,9 +10,13 @@ COPY . .
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-# Sin servidor: este contenedor solo existe para que Ofelia le haga
-# "docker exec" a diario (ofelia.job-exec.*), como el resto de jobs de
-# tumtumpa. lastfm_stats.db vive en /data (volumen compartido, ver
+# Ofelia le hace "docker exec" a diario (ofelia.job-exec.*), como el
+# resto de jobs de tumtumpa -- eso no cambia. server.py añade un único
+# endpoint (/api/jobs/run) para poder relanzar el mismo comando a mano
+# desde "actualizar todos" (index), por red interna, sin socket de
+# Docker -- sin panel ni página, nadie visita este servicio directamente.
+# lastfm_stats.db vive en /data (volumen compartido, ver
 # docker-compose.yml) para que otros servicios puedan montarla en solo
 # lectura y evitar repetir las mismas consultas a la API de Last.fm.
-CMD ["sleep", "infinity"]
+EXPOSE 5000
+CMD ["python3", "server.py"]
