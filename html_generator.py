@@ -315,6 +315,13 @@ def generar_html(json_data=None):
                 opacity: 0.85;
             }
             .badge-top10 { background: var(--warning); color: var(--bg); }
+            .top10-filters, .year-filter { display: flex; gap: 6px; align-items: center; }
+            .top10-filters[hidden] { display: none; }
+            .chip { background: var(--surface-2); color: var(--text-muted); border: 1px solid var(--border);
+                    border-radius: 12px; padding: 3px 10px; font-size: 12px; cursor: pointer; }
+            .chip.active { background: var(--warning); color: var(--bg); border-color: var(--warning); }
+            .year-filter { margin-left: auto; font-size: 13px; color: var(--text-muted); cursor: pointer; user-select: none; }
+            .list-filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 10px 20px 0; }
             .badge-manual { background: var(--accent-2); color: #fff; }
 
             .album.type-top10 { border-color: var(--warning); }
@@ -959,6 +966,18 @@ def generar_html(json_data=None):
                         🏆 Top 10 Orpheus <span class="tab-count" id="count-top10">0</span>
                     </button>
                 </div>
+                <div class="list-filters">
+                    <div class="top10-filters" id="top10-filters" hidden>
+                        <button class="chip active" data-period="" onclick="setPeriod('')">Todos</button>
+                        <button class="chip" data-period="week" onclick="setPeriod('week')">Semanal</button>
+                        <button class="chip" data-period="month" onclick="setPeriod('month')">Mensual</button>
+                        <button class="chip" data-period="overall" onclick="setPeriod('overall')">Total</button>
+                    </div>
+                    <label class="year-filter" title="Solo discos cuya edición más antigua en Orpheus es de este año">
+                        <input type="checkbox" id="only-this-year" onchange="renderGrid()">
+                        Solo de <span id="this-year"></span>
+                    </label>
+                </div>
                 <div class="bulk-toolbar" id="bulk-toolbar">
                     <span id="bulk-count">0 seleccionados</span>
                     <button class="btn-delete-selected" onclick="deleteSelected()">🗑️ Eliminar seleccionados</button>
@@ -980,6 +999,9 @@ def generar_html(json_data=None):
         <script>
             let currentSelected = null;
             let currentTab = 'seguidos';
+            let currentPeriod = '';
+            const THIS_YEAR = new Date().getFullYear();
+            const PERIOD_LABEL = { week: 'semanal', month: 'mensual', overall: 'total' };
             let selectedForDelete = new Set();
             window.torrentData = {};
             window.embedData = {};
@@ -1031,8 +1053,21 @@ def generar_html(json_data=None):
                 document.getElementById('count-top10').textContent = top10Count;
             }
 
+            function setPeriod(period) {
+                currentPeriod = period;
+                document.querySelectorAll('#top10-filters .chip').forEach(c =>
+                    c.classList.toggle('active', c.dataset.period === period));
+                renderGrid();
+            }
+
+            function oldestYearOf(group) {
+                const years = (group.torrents || []).map(t => parseInt(t.remasterYear)).filter(y => y > 0);
+                return years.length > 0 ? Math.min(...years) : null;
+            }
+
             function switchTab(tab) {
                 currentTab = tab;
+                document.getElementById('top10-filters').hidden = tab !== 'top10';
                 document.querySelectorAll('.tab-btn').forEach(btn => {
                     btn.classList.toggle('active', btn.dataset.tab === tab);
                 });
@@ -1045,18 +1080,23 @@ def generar_html(json_data=None):
                 const grid = document.querySelector('.albums-grid');
                 grid.innerHTML = '';
 
+                const onlyThisYear = document.getElementById('only-this-year').checked;
                 const entries = window.allEntries.filter(e =>
-                    currentTab === 'top10' ? e.type === 'top10' : e.type !== 'top10'
+                    (currentTab === 'top10' ? e.type === 'top10' : e.type !== 'top10')
+                    && !(currentTab === 'top10' && currentPeriod && e.album.top10_period !== currentPeriod)
+                    && !(onlyThisYear && oldestYearOf(e.group) !== THIS_YEAR)
                 );
 
                 for (const { album, group, type } of entries) {
                     const groupId = group.groupId;
-                    const years = (group.torrents || []).map(t => t.remasterYear).filter(Boolean);
-                    const oldestYear = years.length > 0 ? Math.min(...years) : 'Unknown';
+                    const oldestYear = oldestYearOf(group) || 'Unknown';
                     const flacCount = group.flacCount || 0;
+                    const period = PERIOD_LABEL[album.top10_period];
 
                     const badgeHtml =
-                        type === 'top10'  ? '<span class="album-type-badge badge-top10">top10</span>' :
+                        type === 'top10'  ? '<span class="album-type-badge badge-top10" title="'
+                                            + (period ? 'Top 10 ' + period + ' de Orpheus' : 'Top 10 de Orpheus (periodo sin registrar)')
+                                            + '">top10' + (period ? ' ' + period : '') + '</span>' :
                         type === 'manual' ? '<span class="album-type-badge badge-manual">manual</span>' : '';
 
                     const div = document.createElement('div');
@@ -1076,14 +1116,19 @@ def generar_html(json_data=None):
                 }
 
                 if (grid.children.length === 0) {
-                    const emptyMsg = currentTab === 'top10'
+                    const emptyMsg = onlyThisYear
+                        ? 'No hay discos de ' + THIS_YEAR + ' con estos filtros.'
+                        : currentTab === 'top10'
                         ? 'No hay discos del Top 10 pendientes (o ya los tienes todos).'
                         : 'No hay álbumes pendientes.';
                     grid.innerHTML = '<p style="color:#7a8694;padding:20px">' + emptyMsg + '</p>';
                 }
             }
 
-            document.addEventListener('DOMContentLoaded', loadAlbums);
+            document.addEventListener('DOMContentLoaded', () => {
+                document.getElementById('this-year').textContent = THIS_YEAR;
+                loadAlbums();
+            });
 
             function closeSidebar() {
                 document.getElementById('sidebar').classList.remove('open');
