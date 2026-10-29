@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Obtiene los discos más descargados de la semana en Orpheus y los añade
-a resultado_flacs.json y albums.csv (si no están ya).
+Obtiene los discos más activos de Orpheus (top semanal, mensual y total)
+y los añade a resultado_flacs.json y albums.csv (si no están ya). Cada
+entrada guarda en "top10_period" de qué top viene (week/month/overall).
 
 Uso:
     python top_semana.py              # top 25 de la semana
@@ -32,6 +33,11 @@ JSON_FILE    = os.path.join(os.path.dirname(__file__), "resultado_flacs.json")
 CSV_FILE     = os.path.join(os.path.dirname(__file__), "albums.csv")
 HEADERS      = {"Authorization": API_KEY}
 
+# Secciones de action=top10 que cuentan (la API devuelve también día, año,
+# más descargados, más datos y mejor sembrados -- antes se mezclaban todas).
+# En este orden: si un disco sale en varias, se queda el periodo más corto.
+PERIODS      = ("week", "month", "overall")
+
 
 
 # ── Orpheus API ───────────────────────────────────────────────────────────────
@@ -52,7 +58,8 @@ def obtener_keys() -> tuple[str | None, str | None]:
 
 
 def obtener_top_semana(limit: int) -> list[dict]:
-    """Devuelve lista de {artist, album, groupId, cover} del top semanal."""
+    """Devuelve lista de {artist, album, groupId, cover, period} de los tops
+    semanal, mensual y total (period = "week" | "month" | "overall")."""
     try:
         r = requests.get(BASE_URL, headers=HEADERS, params={
             "action": "top10",
@@ -71,8 +78,9 @@ def obtener_top_semana(limit: int) -> list[dict]:
 
     seen_groups: set = set()
     entries = []
-    for section in data.get("response", []):
-        for item in section.get("results", []):
+    sections = {s.get("tag"): s for s in data.get("response", [])}
+    for period in PERIODS:
+        for item in sections.get(period, {}).get("results", []):
             if not isinstance(item, dict):
                 continue
             artist   = (item.get("artist") or "").strip()
@@ -85,6 +93,7 @@ def obtener_top_semana(limit: int) -> list[dict]:
                     "album":   album,
                     "groupId": group_id,
                     "cover":   item.get("wikiImage", ""),
+                    "period":  period,
                 })
     return entries
 
@@ -156,7 +165,7 @@ def main():
         f"{r['artist'].lower()}|{r['album'].lower()}" for r in resultados
     }
 
-    print(f"🏆 Obteniendo top {args.limit} de la semana en Orpheus...")
+    print(f"🏆 Obteniendo top {args.limit} semanal, mensual y total de Orpheus...")
     top = obtener_top_semana(args.limit)
     print(f"   {len(top)} entradas recibidas\n")
 
@@ -178,7 +187,7 @@ def main():
         album   = item["album"]
         key     = f"{artist.lower()}|{album.lower()}"
 
-        print(f"  🎵 {artist} — {album}")
+        print(f"  🎵 [{item['period']}] {artist} — {album}")
 
         # ── Omitir si ya lo tengo en Airsonic/qBittorrent (redundante) ────────
         if key not in ya_en_json and ya_lo_tengo(artist, album, torrent_names):
@@ -229,7 +238,8 @@ def main():
                 ],
             }
 
-            entrada = {"artist": artist, "album": album, "groups": [grupo_info]}
+            entrada = {"artist": artist, "album": album, "groups": [grupo_info],
+                       "top10_period": item["period"]}
             if not args.dry_run:
                 resultados.append(entrada)
                 ya_en_json.add(key)
@@ -239,6 +249,13 @@ def main():
             print(f"     ✅ Añadido al JSON ({len(flacs)} FLACs)")
         else:
             print("     — Ya en JSON")
+            # Entradas de antes de guardar el periodo: se etiquetan al volver a salir
+            for r in resultados:
+                if f"{r['artist'].lower()}|{r['album'].lower()}" == key and not r.get("top10_period"):
+                    r["top10_period"] = item["period"]
+                    if not args.dry_run:
+                        with open(JSON_FILE, "w", encoding="utf-8") as f:
+                            json.dump(resultados, f, indent=4, ensure_ascii=False)
 
         # ── Añadir al CSV ─────────────────────────────────────────────────────
         if key not in ya_en_csv:
