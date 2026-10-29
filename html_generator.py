@@ -324,6 +324,38 @@ def generar_html(json_data=None):
             .chip.active { background: var(--warning); color: var(--bg); border-color: var(--warning); }
             .year-filter { margin-left: auto; font-size: 13px; color: var(--text-muted); cursor: pointer; user-select: none; }
             .list-filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 10px 20px 0; }
+
+            /* ── Calendario de lanzamientos ── */
+            #release-calendar { padding: 14px 20px 30px; }
+            #release-calendar[hidden] { display: none; }
+            .cal-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+            .cal-head h2 { font-size: 18px; color: var(--text); min-width: 170px; text-align: center; text-transform: capitalize; }
+            .cal-nav { background: var(--surface-2); color: var(--text); border: 1px solid var(--border);
+                       border-radius: 6px; padding: 5px 11px; cursor: pointer; font-size: 13px; }
+            .cal-nav:hover { border-color: var(--accent); }
+            .cal-summary { color: var(--text-muted); font-size: 13px; margin-left: auto; }
+            .cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+            .cal-dow { font-size: 11px; color: var(--text-muted); text-transform: uppercase; text-align: center; padding: 4px 0; }
+            .cal-day { background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+                       min-height: 92px; padding: 5px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+            .cal-day.other { opacity: .35; }
+            .cal-day.today { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+            .cal-num { font-size: 12px; color: var(--text-muted); font-weight: 600; }
+            .cal-day.today .cal-num { color: var(--accent); }
+            .cal-ev { font-size: 11.5px; line-height: 1.3; background: var(--surface-2); border-radius: 4px;
+                      padding: 3px 5px; color: var(--text); overflow-wrap: anywhere; }
+            .cal-ev .cal-artist { font-weight: 600; }
+            .cal-ev .cal-album { color: var(--text-muted); }
+            .cal-ev.downloaded { opacity: .55; }
+            .cal-ev .ob-icons { margin: 3px 0 0; display: flex; }
+            .cal-empty, .cal-error { color: var(--text-muted); padding: 20px 0; }
+            .cal-error { color: var(--danger, #e74c3c); }
+            @media (max-width: 760px) {
+                .cal-grid { display: flex; flex-direction: column; gap: 6px; }
+                .cal-dow, .cal-day.other, .cal-day.empty { display: none; }
+                .cal-day { min-height: 0; }
+                .cal-summary { margin-left: 0; width: 100%; }
+            }
             .badge-manual { background: var(--accent-2); color: #fff; }
 
             .album.type-top10 { border-color: var(--warning); }
@@ -967,6 +999,9 @@ def generar_html(json_data=None):
                     <button class="tab-btn" data-tab="top10" onclick="switchTab('top10')">
                         🏆 Top 10 Orpheus <span class="tab-count" id="count-top10">0</span>
                     </button>
+                    <button class="tab-btn" data-tab="calendario" onclick="switchTab('calendario')">
+                        📅 Calendario
+                    </button>
                 </div>
                 <div class="list-filters">
                     <div class="top10-filters" id="top10-filters" hidden>
@@ -987,6 +1022,17 @@ def generar_html(json_data=None):
                 </div>
                 <div class="albums-grid">
                     <p style="color:#7a8694;padding:20px">Cargando álbumes...</p>
+                </div>
+                <div id="release-calendar" hidden>
+                    <div class="cal-head">
+                        <button class="cal-nav" onclick="calMove(-1)" title="Mes anterior">‹</button>
+                        <h2 id="cal-title"></h2>
+                        <button class="cal-nav" onclick="calMove(1)" title="Mes siguiente">›</button>
+                        <button class="cal-nav" onclick="calToday()">Hoy</button>
+                        <button class="cal-nav" onclick="loadCalendar(true)" title="Volver a leer Radicale">↻</button>
+                        <span class="cal-summary" id="cal-summary"></span>
+                    </div>
+                    <div id="cal-body"></div>
                 </div>
             </div>
             <div class="sidebar" id="sidebar">
@@ -1071,8 +1117,93 @@ def generar_html(json_data=None):
                 return years.length > 0 ? Math.min(...years) : null;
             }
 
+            // ── Calendario de lanzamientos (Radicale) ──────────────────────
+            let calYear = new Date().getFullYear(), calMonth = new Date().getMonth();  // mes 0-11
+
+            function calMove(delta) {
+                calMonth += delta;
+                if (calMonth < 0) { calMonth = 11; calYear--; }
+                if (calMonth > 11) { calMonth = 0; calYear++; }
+                loadCalendar();
+            }
+
+            function calToday() {
+                calYear = new Date().getFullYear();
+                calMonth = new Date().getMonth();
+                loadCalendar();
+            }
+
+            async function loadCalendar(refresh) {
+                const key = calYear + '-' + String(calMonth + 1).padStart(2, '0');
+                const title = new Date(calYear, calMonth, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+                document.getElementById('cal-title').textContent = title;
+                const body = document.getElementById('cal-body');
+                document.getElementById('cal-summary').textContent = 'Cargando…';
+                let data;
+                try {
+                    const r = await fetch('/api/release_calendar?month=' + key + (refresh ? '&refresh=1' : ''));
+                    data = await r.json();
+                    if (!r.ok || data.error) throw new Error(data.error || ('HTTP ' + r.status));
+                } catch (e) {
+                    body.innerHTML = '<p class="cal-error">' + escapeHtml(e.message) + '</p>';
+                    document.getElementById('cal-summary').textContent = '';
+                    return;
+                }
+                if (data.month !== key) return;  // llegó tarde una respuesta de otro mes
+                renderCalendar(data.events);
+            }
+
+            function renderCalendar(events) {
+                const byDay = {};
+                for (const ev of events) (byDay[ev.date] = byDay[ev.date] || []).push(ev);
+                const downloaded = events.filter(e => e.downloaded).length;
+                document.getElementById('cal-summary').textContent = events.length
+                    ? events.length + ' lanzamiento' + (events.length !== 1 ? 's' : '') + (downloaded ? ' · ' + downloaded + ' descargado' + (downloaded !== 1 ? 's' : '') : '')
+                    : 'Sin lanzamientos este mes';
+
+                const pad = n => String(n).padStart(2, '0');
+                const todayIso = (() => { const t = new Date(); return t.getFullYear() + '-' + pad(t.getMonth() + 1) + '-' + pad(t.getDate()); })();
+                const first = new Date(calYear, calMonth, 1);
+                const offset = (first.getDay() + 6) % 7;  // semana empieza en lunes
+                const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+                const cells = Math.ceil((offset + daysInMonth) / 7) * 7;
+
+                let html = '<div class="cal-grid">' + ['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(d => '<div class="cal-dow">' + d + '</div>').join('');
+                for (let i = 0; i < cells; i++) {
+                    const d = new Date(calYear, calMonth, i - offset + 1);
+                    const iso = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+                    const inMonth = d.getMonth() === calMonth;
+                    const evs = inMonth ? (byDay[iso] || []) : [];
+                    const cls = 'cal-day' + (inMonth ? '' : ' other') + (iso === todayIso ? ' today' : '') + (inMonth && !evs.length ? ' empty' : '');
+                    const label = inMonth && evs.length && window.innerWidth <= 760
+                        ? d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric' })
+                        : d.getDate();
+                    html += '<div class="' + cls + '"><div class="cal-num">' + label + '</div>' +
+                        evs.map(ev =>
+                            '<div class="cal-ev' + (ev.downloaded ? ' downloaded' : '') + '" title="' + escapeAttr(ev.artist + (ev.album ? ' — ' + ev.album : '') + (ev.downloaded ? ' (descargado)' : '')) + '">' +
+                                (ev.icon ? ev.icon + ' ' : '') +
+                                '<span class="cal-artist">' + escapeHtml(ev.artist) + '</span>' +
+                                (ev.album ? ' <span class="cal-album">— ' + escapeHtml(ev.album) + '</span>' : '') +
+                                '<div data-owned-artist="' + escapeAttr(ev.artist) + '"' + (ev.album ? ' data-owned-album="' + escapeAttr(ev.album) + '"' : '') + '></div>' +
+                            '</div>'
+                        ).join('') +
+                        '</div>';
+                }
+                document.getElementById('cal-body').innerHTML = html + '</div>';
+            }
+
             function switchTab(tab) {
                 currentTab = tab;
+                const isCal = tab === 'calendario';
+                document.getElementById('release-calendar').hidden = !isCal;
+                document.querySelector('.albums-grid').style.display = isCal ? 'none' : '';
+                document.querySelector('.list-filters').style.display = isCal ? 'none' : '';
+                if (isCal) {
+                    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tab));
+                    document.getElementById('bulk-toolbar').classList.remove('visible');
+                    loadCalendar();
+                    return;
+                }
                 document.getElementById('top10-filters').hidden = tab !== 'top10';
                 document.querySelectorAll('.tab-btn').forEach(btn => {
                     btn.classList.toggle('active', btn.dataset.tab === tab);

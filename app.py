@@ -64,6 +64,9 @@ RADICALE_USER  = os.getenv('RADICALE_USERNAME', '')
 RADICALE_PW    = os.getenv('RADICALE_PW', '')
 RADICALE_BASE  = os.getenv('RADICALE_CALENDAR', '').rstrip('/')
 CALENDAR_TASKS = os.getenv('CALENDAR_TASKS', '')
+# Calendario de lanzamientos (VEVENT "Artista - Álbum"), el mismo que lee
+# revisor_calendario.py y en el que discos_pendientes marca 💾 lo descargado.
+CALENDAR_NAME  = os.getenv('CALENDAR_NAME', '')
 
 # --- CONFIGURACIÓN MÓDULO PODCAST/TTS (server.py) ---
 # Ajusta WORK_DIR a la ruta real de tus scripts de podcast
@@ -485,6 +488,77 @@ def settings_panel_js():
 @app.route('/discos_nuevos')
 def discos_nuevos():
     return send_file(HTML_OUTPUT) if os.path.exists(HTML_OUTPUT) else ("No encontrado", 404)
+
+# ── Calendario mensual de lanzamientos (pestaña 📅) ──────────────────────────
+
+_RELEASE_CACHE: dict = {}   # 'YYYY-MM' -> (timestamp, eventos)
+_RELEASE_TTL = 600
+
+
+def _release_events(year: int, month: int) -> list[dict]:
+    """VEVENTs del mes pedido (solo ese rango, vía time-range de CalDAV)."""
+    start = date(year, month, 1)
+    end = date(year + (month == 12), month % 12 + 1, 1)
+    body = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<C:calendar-query xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">'
+        '  <D:prop><C:calendar-data/></D:prop>'
+        '  <C:filter><C:comp-filter name="VCALENDAR"><C:comp-filter name="VEVENT">'
+        f'    <C:time-range start="{start:%Y%m%d}T000000Z" end="{end:%Y%m%d}T000000Z"/>'
+        '  </C:comp-filter></C:comp-filter></C:filter>'
+        '</C:calendar-query>'
+    )
+    r = requests.request(
+        'REPORT', f'{RADICALE_URL}{RADICALE_BASE}/{CALENDAR_NAME}/',
+        data=body.encode('utf-8'),
+        headers={'Depth': '1', 'Content-Type': 'application/xml; charset=utf-8'},
+        auth=(RADICALE_USER, RADICALE_PW), timeout=30,
+    )
+    r.raise_for_status()
+    ns = {'D': 'DAV:', 'C': 'urn:ietf:params:xml:ns:caldav'}
+    events = []
+    for el in ET.fromstring(r.content).findall('.//C:calendar-data', ns):
+        if not el.text:
+            continue
+        for comp in Calendar.from_ical(el.text).walk('VEVENT'):
+            dt = comp.get('DTSTART')
+            dt = dt.dt if dt is not None else None
+            day = dt.date() if isinstance(dt, datetime) else dt
+            if not isinstance(day, date) or not (start <= day < end):
+                continue
+            summary = str(comp.get('SUMMARY', '')).strip()
+            icon = summary[:1] if summary and not summary[0].isalnum() else ''
+            artist, album = _parse_summary(summary)
+            description = str(comp.get('DESCRIPTION', ''))
+            events.append({
+                'date': day.isoformat(), 'artist': artist, 'album': album,
+                'icon': icon, 'downloaded': '💾' in summary or 'Descargado' in description,
+            })
+    events.sort(key=lambda e: (e['date'], e['artist'].lower()))
+    return events
+
+
+@app.route('/api/release_calendar')
+def api_release_calendar():
+    """?month=YYYY-MM (por defecto el actual) -> {month, events: [...]}."""
+    if not (RADICALE_URL and CALENDAR_NAME):
+        return jsonify({'error': 'Radicale o CALENDAR_NAME sin configurar'}), 500
+    try:
+        year, month = (int(x) for x in (request.args.get('month') or date.today().strftime('%Y-%m')).split('-'))
+        date(year, month, 1)
+    except ValueError:
+        return jsonify({'error': 'month debe ser YYYY-MM'}), 400
+    key = f'{year:04d}-{month:02d}'
+    cached = _RELEASE_CACHE.get(key)
+    if cached and (datetime.now().timestamp() - cached[0]) < _RELEASE_TTL and request.args.get('refresh') != '1':
+        return jsonify({'month': key, 'events': cached[1]})
+    try:
+        events = _release_events(year, month)
+    except Exception as e:
+        return jsonify({'error': f'No se pudo leer Radicale: {e}'}), 502
+    _RELEASE_CACHE[key] = (datetime.now().timestamp(), events)
+    return jsonify({'month': key, 'events': events})
+
 
 @app.route('/api/albums')
 def api_albums():
