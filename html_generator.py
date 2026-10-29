@@ -218,6 +218,8 @@ def generar_html(json_data=None):
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Discos Nuevos</title>
         <link rel="stylesheet" href="/theme-palettes.css">
+        <!-- Iconos Airsonic / qBittorrent / escuchado / Mix (servicio ya-lo-tengo) -->
+        <script>(function(){var s=document.createElement('script');s.src=location.protocol+'//'+location.hostname+':8780/owned-badges.js';document.head.appendChild(s);})();</script>
         <style>
             [data-theme="og"], :root:not([data-theme]) {
                 --bg: #0a0e27;
@@ -1053,6 +1055,10 @@ def generar_html(json_data=None):
                 document.getElementById('count-top10').textContent = top10Count;
             }
 
+            function escapeAttr(s) {
+                return String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+            }
+
             function setPeriod(period) {
                 currentPeriod = period;
                 document.querySelectorAll('#top10-filters .chip').forEach(c =>
@@ -1110,7 +1116,8 @@ def generar_html(json_data=None):
                         '<button class="delete-btn" onclick="deleteAlbum(' + groupId + ', event)" title="Eliminar álbum">×</button>' +
                         '<img src="' + (group.cover || '') + '" alt="' + album.artist + ' - ' + album.album + '">' +
                         '<div class="album-artist">' + album.artist + '</div>' +
-                        '<div class="album-name">' + album.album + '</div>' +
+                        '<div class="album-name" data-owned-artist="' + escapeAttr(album.artist) +
+                            '" data-owned-album="' + escapeAttr(album.album) + '">' + album.album + '</div>' +
                         '<div class="album-date">(' + oldestYear + ') · ' + flacCount + ' FLAC' + (flacCount !== 1 ? 's' : '') + '</div>';
                     grid.appendChild(div);
                 }
