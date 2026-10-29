@@ -464,7 +464,11 @@ def run_tts_conversion():
 
 @app.route('/')
 def index():
-    return send_file('index.html')
+    # resumen_flacs.html es el que regenera main.sh y va montado desde el host;
+    # index.html es la copia que main.sh hace dentro del contenedor (sin
+    # volumen), así que tras un rebuild vuelve a la versión del repo hasta el
+    # siguiente cron.
+    return send_file(HTML_OUTPUT if os.path.exists(HTML_OUTPUT) else 'index.html')
 
 @app.route('/theme-palettes.css')
 def theme_palettes_css():
