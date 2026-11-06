@@ -40,6 +40,7 @@ Variables en .env (ubicado junto al script o en el directorio raíz):
 """
 
 import argparse
+import json
 import os
 import re
 import sqlite3
@@ -83,6 +84,9 @@ MB_EMAIL   = os.getenv("MB_EMAIL",   "user@example.com")
 MB_BASE       = "https://musicbrainz.org/ws/2/"
 MB_UA         = f"SyncMusic/2.0 ({MB_EMAIL})"
 MB_RATE_LIMIT = 1.5
+# Un "no encontrado" cacheado en mb_cache se vuelve a preguntar pasado este
+# tiempo, por si alguien ha añadido el disco a MusicBrainz entretanto.
+MB_MISS_RETRY_DAYS = 30
 
 # Sesión MB persistente (reutiliza conexión TCP/SSL)
 _mb_session = requests.Session()
@@ -347,6 +351,10 @@ def update_vtodo_completed(task: dict, listened_date: date) -> bool:
 # ─────────────────────────────────────────────────────────────────────────────
 
 _mb_last_call: float = 0.0
+# Fallos de red/servidor (no 400/404, que son respuestas definitivas). main()
+# lo compara antes/después de cada búsqueda para no cachear un resultado
+# vacío que solo se debe a que MusicBrainz no respondía.
+_mb_errors: int = 0
 _LUCENE_SPECIAL = re.compile(r'([\+\-\!\(\)\{\}\[\]\^"~\*\?:\\\/])')
 
 
@@ -355,7 +363,7 @@ def _mb_escape(s: str) -> str:
 
 
 def mb_get(endpoint: str, params: dict, _attempt: int = 0) -> Optional[dict]:
-    global _mb_last_call, _mb_session
+    global _mb_last_call, _mb_session, _mb_errors
 
     MAX_RETRIES = 5
     elapsed = time.time() - _mb_last_call
@@ -375,6 +383,7 @@ def mb_get(endpoint: str, params: dict, _attempt: int = 0) -> Optional[dict]:
         _mb_last_call = time.time()
         if _attempt >= MAX_RETRIES:
             print(f"\n    ⚠️  MB: error de red tras {MAX_RETRIES} reintentos ({exc.__class__.__name__})")
+            _mb_errors += 1
             return None
         wait = 5 * (2 ** _attempt)
         print(f"\n    MB: reintento {_attempt+1}/{MAX_RETRIES} en {wait}s...", end="", flush=True)
@@ -397,6 +406,7 @@ def mb_get(endpoint: str, params: dict, _attempt: int = 0) -> Optional[dict]:
         wait = max(int(r.headers.get("Retry-After", 10 * (2 ** _attempt))), 10)
         if _attempt >= MAX_RETRIES:
             print(f"\n    ⚠️  MB: HTTP {r.status_code} persistente, se omite")
+            _mb_errors += 1
             return None
         print(f"\n    MB: rate-limit {r.status_code}, esperando {wait}s...", end="", flush=True)
         time.sleep(wait)
@@ -405,6 +415,7 @@ def mb_get(endpoint: str, params: dict, _attempt: int = 0) -> Optional[dict]:
         wait = 5 * (2 ** _attempt)
         if _attempt >= MAX_RETRIES:
             print(f"\n    ⚠️  MB: HTTP {r.status_code} persistente, se omite")
+            _mb_errors += 1
             return None
         print(f"\n    MB: error {r.status_code}, reintento {_attempt+1} en {wait}s...", end="", flush=True)
         time.sleep(wait)
@@ -663,6 +674,19 @@ CREATE TABLE IF NOT EXISTS albums (
     days_release_to_listened  INTEGER,
     UNIQUE(artist_id, name_normalized)
 );
+
+-- Respuestas de MusicBrainz por (artista, disco). Sin esto, cada ejecución
+-- diaria repetía 2-4 peticiones (a MB_RATE_LIMIT s) por cada VTODO sin
+-- escuchar -- ~470 discos, ~1h20 de job -- para una tracklist que no cambia.
+-- value: JSON (lista de pistas / fecha); NULL o [] = no encontrado.
+CREATE TABLE IF NOT EXISTS mb_cache (
+    kind              TEXT NOT NULL,   -- 'tracklist' | 'release_date'
+    artist_normalized TEXT NOT NULL,
+    album_normalized  TEXT NOT NULL,
+    value             TEXT,
+    fetched_at        TEXT NOT NULL,
+    PRIMARY KEY (kind, artist_normalized, album_normalized)
+);
 """
 
 
@@ -776,6 +800,41 @@ def get_release_from_db(conn: sqlite3.Connection, artist: str, album: str) -> Op
     ).fetchone()
     return row[0] if row and row[0] else None
 
+
+def mb_cache_get(conn: sqlite3.Connection, kind: str,
+                 artist: str, album: str) -> tuple[bool, object]:
+    """(encontrado_en_cache, valor). Los "no encontrado" caducan a los
+    MB_MISS_RETRY_DAYS días; los aciertos no caducan."""
+    row = conn.execute(
+        "SELECT value, fetched_at FROM mb_cache "
+        "WHERE kind = ? AND artist_normalized = ? AND album_normalized = ?",
+        (kind, _normalize(artist), _normalize(album))
+    ).fetchone()
+    if not row:
+        return False, None
+    value = json.loads(row[0]) if row[0] is not None else None
+    if not value:
+        try:
+            age = (date.today() - date.fromisoformat(row[1][:10])).days
+        except ValueError:
+            age = MB_MISS_RETRY_DAYS
+        if age >= MB_MISS_RETRY_DAYS:
+            return False, None
+    return True, value
+
+
+def mb_cache_put(conn: sqlite3.Connection, kind: str,
+                 artist: str, album: str, value) -> None:
+    conn.execute(
+        "INSERT OR REPLACE INTO mb_cache "
+        "(kind, artist_normalized, album_normalized, value, fetched_at) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (kind, _normalize(artist), _normalize(album),
+         json.dumps(value) if value is not None else None,
+         date.today().isoformat())
+    )
+    conn.commit()
+
 # ─────────────────────────────────────────────────────────────────────────────
 #  MAIN
 # ─────────────────────────────────────────────────────────────────────────────
@@ -872,8 +931,13 @@ def main():
 
         # Si sigue siendo None, buscamos fuera
         if release_date is None:
-            print(f"\n  🎸 {artist} — {album}  (sin VEVENT ni registro previo, buscando en MusicBrainz...)")
-            release_date = get_release_date_from_mb(artist, album)
+            hit, release_date = mb_cache_get(music_conn, "release_date", artist, album)
+            if not hit:
+                print(f"\n  🎸 {artist} — {album}  (sin VEVENT ni registro previo, buscando en MusicBrainz...)")
+                errors_before = _mb_errors
+                release_date = get_release_date_from_mb(artist, album)
+                if _mb_errors == errors_before and not args.dry_run:
+                    mb_cache_put(music_conn, "release_date", artist, album, release_date)
             if release_date:
                 print(f"    📅 MusicBrainz: lanzamiento el {release_date}")
             elif args.auto:
@@ -908,7 +972,12 @@ def main():
             stats["no_listen"] += 1
             continue
 
-        tracks = get_tracklist(artist, album)
+        hit, tracks = mb_cache_get(music_conn, "tracklist", artist, album)
+        if not hit:
+            errors_before = _mb_errors
+            tracks = get_tracklist(artist, album)
+            if _mb_errors == errors_before and not args.dry_run:
+                mb_cache_put(music_conn, "tracklist", artist, album, tracks)
         if not tracks:
             stats["no_listen"] += 1
             continue
