@@ -103,7 +103,11 @@ class RadicaleTasks:
     def __init__(self, url, username, password, name):
         from caldav import DAVClient
         calendars = DAVClient(url=url, username=username, password=password).principal().calendars()
-        self.calendar = next((c for c in calendars if name in str(c.url) or _name(c) == name), None)
+        # Primero el nombre visible exacto; si no, el último tramo de la URL (sin subcadenas:
+        # «discos» no debe coger «discos_pendientes»)
+        slug = lambda c: str(c.url).rstrip("/").rsplit("/", 1)[-1]
+        self.calendar = (next((c for c in calendars if _name(c) == name), None)
+                         or next((c for c in calendars if slug(c) == name), None))
         if self.calendar is None:
             if not calendars:
                 raise RuntimeError("Radicale: no hay calendarios")
