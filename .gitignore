@@ -1,5 +1,7 @@
 .env*
+!.env.example
 **/.env*
+!.env.example
 *.db*
 **/.db*
 *.json*

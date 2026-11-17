@@ -44,9 +44,9 @@ logger = logging.getLogger(__name__)
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_JSON = os.path.join(APP_DIR, "resultado_flacs.json")
 HTML_OUTPUT = os.path.join(APP_DIR, "resumen_flacs.html")
-DOWNLOAD_FOLDER = os.getenv('LIDARR_WATCH_TORRENTS_PATH', '/ruta/al/nas/lidarr/torrents_backup/watch_torrents')
-BASE_PATH = os.getenv('LIDARR_TORRENTS_PATH', '/ruta/al/nas/lidarr/torrents_backup')
-MOODE_PATH = os.getenv('MOODE_TEMP_PATH', '/ruta/al/nas/moode/temp/auto-dietpi')
+DOWNLOAD_FOLDER = os.getenv('LIDARR_WATCH_TORRENTS_PATH', '/music/watch_torrents')
+BASE_PATH = os.getenv('LIDARR_TORRENTS_PATH', '/music/torrents_backup')
+MOODE_PATH = os.getenv('MOODE_TEMP_PATH', '/music/temp')
 CSV_FILE = os.path.join(APP_DIR, "albums.csv")
 EMBED_CACHE = os.path.join(APP_DIR, "embeds_cache.json")
 LASTFM_INFO_CACHE = os.path.join(APP_DIR, "lastfm_info_cache.json")
@@ -70,7 +70,7 @@ CALENDAR_NAME  = os.getenv('CALENDAR_NAME', '')
 
 # --- CONFIGURACIÓN MÓDULO PODCAST/TTS (server.py) ---
 # Ajusta WORK_DIR a la ruta real de tus scripts de podcast
-WORK_DIR = os.getenv('TTS_WORK_DIR', '/home/usuario/contenedores/podcast-tts')
+WORK_DIR = os.getenv('TTS_WORK_DIR', '/podcast-tts')
 SELECTION_FILE = os.path.join(WORK_DIR, "selection.json")
 LOG_FILE = os.path.join(WORK_DIR, "conversion_log.txt")
 ARTICLES_DATA_FILE = os.path.join(WORK_DIR, "articles_data.json")
@@ -79,8 +79,8 @@ STATUS_FILE = os.path.join(WORK_DIR, "conversion_status.json")
 os.makedirs(WORK_DIR, exist_ok=True)
 
 # Radicale
-CALENDAR_URL = "https://radicale.example.org/pollo/982339b6-2686-86aa-068c-d6dcdb8f712c/"
-TASKS_URL = "https://radicale.example.org/pollo/00169e81-e5f4-d26a-d1c9-23a3dad5ea5b/"
+CALENDAR_URL = os.getenv('RADICALE_CALENDAR_URL', '')  # colección de eventos: https://servidor/usuario/<uid>/
+TASKS_URL = os.getenv('RADICALE_TASKS_URL', '')  # colección de tareas (VTODO)
 
 # Telegram
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
@@ -103,6 +103,8 @@ VARS_SPEC = [
     {"name": "RADICALE_PW", "secret": True, "help": "Contraseña Radicale"},
     {"name": "RADICALE_CALENDAR", "secret": False, "help": "Ruta del calendario de lanzamientos"},
     {"name": "CALENDAR_TASKS", "secret": False, "help": "Ruta del calendario de tareas"},
+    {"name": "RADICALE_CALENDAR_URL", "secret": False, "help": "URL completa de la colección de eventos de lanzamientos (https://servidor/usuario/<uid>/)"},
+    {"name": "RADICALE_TASKS_URL", "secret": False, "help": "URL completa de la colección de tareas (https://servidor/usuario/<uid>/)"},
     {"name": "AIRSONIC_URL", "secret": True, "help": "URL de escaneo de Airsonic (incluye credenciales embebidas)"},
     {"name": "AIRSONIC_USER", "secret": False, "help": "Usuario de Airsonic (usado por main.sh -> airsonic_clean_csv.py)"},
     {"name": "AIRSONIC_PASS", "secret": True, "help": "Contraseña de Airsonic (usado por main.sh -> airsonic_clean_csv.py)"},
