@@ -8,3 +8,8 @@ icalendar
 caldav
 pytz
 qbittorrent-api
+feedparser
+python-dotenv
+google-api-python-client
+google-auth
+google-auth-oauthlib

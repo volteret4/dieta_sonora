@@ -32,6 +32,42 @@ este repo apunta a una instalación concreta.
 
 Tarea diaria: `docker exec dieta-sonora bash main.sh`.
 
+## Discos al calendario
+
+Dos scripts de `tools/` llevan los discos a tu calendario, en Radicale, en Google o en los dos (`CALENDAR_BACKENDS=radicale,google`):
+
+- `add_release_calendar.py` pone cada lanzamiento de tu feed de Muspy como un evento de día completo («💿 Artista - Disco», «🎤» si es EP o single). No repite los que ya están y borra duplicados.
+- `discos_escuchados_calendario.py` marca como hechas las tareas «Artista - Disco» que ya has escuchado según Last.fm. En Google las tareas viven en Google Tasks, porque Google Calendar no tiene tareas.
+
+Lánzalos a diario con cron, o el segundo desde el botón de la web.
+
+### Usar un calendario tuyo de Google
+
+1. Crea un calendario aparte en Google Calendar (por ejemplo «Discos») para no mezclarlo con el principal.
+2. En [Google Cloud](https://console.cloud.google.com/): crea un proyecto y activa **Google Calendar API** (y **Google Tasks API** si quieres los discos escuchados).
+3. Elige credenciales:
+   - **Cuenta de servicio** (solo calendario, sin autorizar nada): descarga su JSON y comparte tu calendario «Discos» con el correo de la cuenta, con permiso «Hacer cambios en eventos».
+   - **Cliente OAuth, tipo «App de escritorio»** (calendario y Tasks): descarga su JSON y autoriza una vez en un equipo con navegador:
+
+     ```bash
+     python3 tools/calendario.py autorizar
+     ```
+
+     Se crea `tools/google_token.json`. Si los scripts corren en un servidor sin navegador, copia ahí ese fichero.
+4. En `.env`: `CALENDAR_BACKENDS=google` (o `radicale,google`), `GOOGLE_CREDENTIALS_FILE` con la ruta al JSON y el id del calendario y de la lista:
+
+   ```bash
+   python3 tools/calendario.py calendarios
+   ```
+
+   ```bash
+   python3 tools/calendario.py listas
+   ```
+
+   Con cuenta de servicio, `calendarios` no muestra el tuyo aunque esté compartido: copia el id de Google Calendar → Configuración del calendario → «Integrar el calendario» → «ID del calendario».
+
+Los JSON de credenciales y el token no van a git (`.gitignore` ignora `*.json`).
+
 ## Instalación con Docker Compose
 
 ```bash
